@@ -6,3 +6,4 @@ test.py
 recipes_all.json
 recipes.jsonl
 parsed_urls.txt
+errors.jsonl
