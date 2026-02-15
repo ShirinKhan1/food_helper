@@ -1,0 +1,714 @@
+{
+  "source": "https://food.ru/recipes/zakuski/rulety",
+  "base_url": "https://food.ru",
+  "categories": [
+    {
+      "name": "Доступный ЗОЖ",
+      "url": "https://food.ru/recipes/dostupnyi-zozh",
+      "subcategories": [
+        {
+          "name": "Базовый уровень",
+          "url": "https://food.ru/recipes/bazovyi-uroven"
+        },
+        {
+          "name": "Продвинутый уровень",
+          "url": "https://food.ru/recipes/prodvinutyi-uroven"
+        }
+      ]
+    },
+    {
+      "name": "Закуски",
+      "url": "https://food.ru/recipes/zakuski",
+      "subcategories": [
+        {
+          "name": "Рулеты",
+          "url": "https://food.ru/recipes/zakuski/rulety"
+        },
+        {
+          "name": "Хачапури",
+          "url": "https://food.ru/recipes/zakuski/hachapuri"
+        },
+        {
+          "name": "Холодец",
+          "url": "https://food.ru/recipes/zakuski/holodec"
+        },
+        {
+          "name": "Заливное",
+          "url": "https://food.ru/recipes/zakuski/zalivnoe"
+        },
+        {
+          "name": "Бутерброды",
+          "url": "https://food.ru/recipes/zakuski/buterbrody"
+        },
+        {
+          "name": "Тартар",
+          "url": "https://food.ru/recipes/zakuski/tartar"
+        },
+        {
+          "name": "Шаурма",
+          "url": "https://food.ru/recipes/zakuski/shaurma"
+        },
+        {
+          "name": "Тарталетки",
+          "url": "https://food.ru/recipes/zakuski/tartaletki"
+        },
+        {
+          "name": "Паштеты",
+          "url": "https://food.ru/recipes/zakuski/pashtety"
+        },
+        {
+          "name": "Чипсы",
+          "url": "https://food.ru/recipes/zakuski/chipsy"
+        }
+      ]
+    },
+    {
+      "name": "Салаты",
+      "url": "https://food.ru/recipes/salaty",
+      "subcategories": [
+        {
+          "name": "Оливье",
+          "url": "https://food.ru/recipes/salaty/olive"
+        },
+        {
+          "name": "Крабовый",
+          "url": "https://food.ru/recipes/salaty/salaty-s-krabovymi-palochkami"
+        },
+        {
+          "name": "Селедка под шубой",
+          "url": "https://food.ru/recipes/salaty/seledka-pod-shuboi"
+        },
+        {
+          "name": "Греческий",
+          "url": "https://food.ru/recipes/salaty/grecheskii-salat"
+        },
+        {
+          "name": "Винегрет",
+          "url": "https://food.ru/recipes/salaty/vinegret"
+        },
+        {
+          "name": "Мимоза",
+          "url": "https://food.ru/recipes/salaty/salat-mimoza"
+        },
+        {
+          "name": "Цезарь",
+          "url": "https://food.ru/recipes/salaty/salat-cezar"
+        },
+        {
+          "name": "Овощные",
+          "url": "https://food.ru/recipes/salaty/ovoshchnye-salaty"
+        },
+        {
+          "name": "С креветками",
+          "url": "https://food.ru/recipes/salaty/salaty-s-krevetkami"
+        },
+        {
+          "name": "Куриные",
+          "url": "https://food.ru/recipes/salaty/salaty-s-kuricei"
+        }
+      ]
+    },
+    {
+      "name": "Первые блюда",
+      "url": "https://food.ru/recipes/pervye-bliuda",
+      "subcategories": [
+        {
+          "name": "Супы",
+          "url": "https://food.ru/recipes/pervye-bliuda/supy"
+        },
+        {
+          "name": "Супы-пюре",
+          "url": "https://food.ru/recipes/pervye-bliuda/supy-piure"
+        },
+        {
+          "name": "Овощные супы",
+          "url": "https://food.ru/recipes/pervye-bliuda/ovoshchnye-supy"
+        },
+        {
+          "name": "Борщ",
+          "url": "https://food.ru/recipes/pervye-bliuda/borshch"
+        },
+        {
+          "name": "Солянка",
+          "url": "https://food.ru/recipes/pervye-bliuda/soljanka"
+        },
+        {
+          "name": "Рассольник",
+          "url": "https://food.ru/recipes/pervye-bliuda/rassolnik"
+        },
+        {
+          "name": "Харчо",
+          "url": "https://food.ru/recipes/pervye-bliuda/harcho"
+        },
+        {
+          "name": "Окрошка",
+          "url": "https://food.ru/recipes/pervye-bliuda/okroshka"
+        },
+        {
+          "name": "Щи",
+          "url": "https://food.ru/recipes/pervye-bliuda/shchi"
+        },
+        {
+          "name": "Рыбные",
+          "url": "https://food.ru/recipes/pervye-bliuda/supy-s-ryboi"
+        }
+      ]
+    },
+    {
+      "name": "Вторые блюда",
+      "url": "https://food.ru/recipes/vtorye-bliuda",
+      "subcategories": [
+        {
+          "name": "Блины",
+          "url": "https://food.ru/recipes/vtorye-bliuda/bliny"
+        },
+        {
+          "name": "Голубцы",
+          "url": "https://food.ru/recipes/vtorye-bliuda/golubcy"
+        },
+        {
+          "name": "Сырники",
+          "url": "https://food.ru/recipes/vtorye-bliuda/syrniki"
+        },
+        {
+          "name": "Котлеты",
+          "url": "https://food.ru/recipes/vtorye-bliuda/kotlety"
+        },
+        {
+          "name": "Оладьи",
+          "url": "https://food.ru/recipes/vtorye-bliuda/oladi"
+        },
+        {
+          "name": "Запеканка",
+          "url": "https://food.ru/recipes/vtorye-bliuda/zapekanka"
+        },
+        {
+          "name": "Плов",
+          "url": "https://food.ru/recipes/vtorye-bliuda/plov"
+        },
+        {
+          "name": "Пельмени",
+          "url": "https://food.ru/recipes/vtorye-bliuda/pelmeni"
+        },
+        {
+          "name": "Шашлык",
+          "url": "https://food.ru/recipes/vtorye-bliuda/shashlyk"
+        },
+        {
+          "name": "Каши",
+          "url": "https://food.ru/recipes/vtorye-bliuda/kashi"
+        }
+      ]
+    },
+    {
+      "name": "Гарниры",
+      "url": "https://food.ru/recipes/garniry",
+      "subcategories": [
+        {
+          "name": "Гречка",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-grechki"
+        },
+        {
+          "name": "Рис",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-risa"
+        },
+        {
+          "name": "Макароны",
+          "url": "https://food.ru/recipes/garniry/makarony-na-garnir"
+        },
+        {
+          "name": "Перловка",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-perlovki"
+        },
+        {
+          "name": "Булгур",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-bulgura"
+        },
+        {
+          "name": "Капуста",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-kapusty"
+        },
+        {
+          "name": "Картошка",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-kartoshki"
+        },
+        {
+          "name": "Свекла",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-svekly"
+        },
+        {
+          "name": "Кукуруза",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-kukuruzy"
+        },
+        {
+          "name": "Кабачки",
+          "url": "https://food.ru/recipes/garniry/garniry-iz-kabachkov"
+        }
+      ]
+    },
+    {
+      "name": "Десерты",
+      "url": "https://food.ru/recipes/deserty",
+      "subcategories": [
+        {
+          "name": "Торты",
+          "url": "https://food.ru/recipes/deserty/torty"
+        },
+        {
+          "name": "Печенье",
+          "url": "https://food.ru/recipes/deserty/pechene"
+        },
+        {
+          "name": "Варенье",
+          "url": "https://food.ru/recipes/deserty/varene"
+        },
+        {
+          "name": "Кремы",
+          "url": "https://food.ru/recipes/deserty/kremy"
+        },
+        {
+          "name": "Панкейки",
+          "url": "https://food.ru/recipes/deserty/pankeik"
+        },
+        {
+          "name": "Кекс",
+          "url": "https://food.ru/recipes/deserty/keks"
+        },
+        {
+          "name": "Бисквит",
+          "url": "https://food.ru/recipes/deserty/biskvit"
+        },
+        {
+          "name": "Пирожные",
+          "url": "https://food.ru/recipes/deserty/pirozhnye"
+        },
+        {
+          "name": "Мороженое",
+          "url": "https://food.ru/recipes/deserty/morozhenoe"
+        },
+        {
+          "name": "Чизкейк",
+          "url": "https://food.ru/recipes/deserty/chizkeik"
+        }
+      ]
+    },
+    {
+      "name": "Выпечка",
+      "url": "https://food.ru/recipes/vypechka",
+      "subcategories": [
+        {
+          "name": "Тесто",
+          "url": "https://food.ru/recipes/vypechka/testo"
+        },
+        {
+          "name": "Пироги",
+          "url": "https://food.ru/recipes/vypechka/pirogi"
+        },
+        {
+          "name": "Шарлотка",
+          "url": "https://food.ru/recipes/vypechka/sharlotka"
+        },
+        {
+          "name": "Пицца",
+          "url": "https://food.ru/recipes/vypechka/picca"
+        },
+        {
+          "name": "Хлеб",
+          "url": "https://food.ru/recipes/vypechka/hleb"
+        },
+        {
+          "name": "Вафли",
+          "url": "https://food.ru/recipes/vypechka/vafli"
+        },
+        {
+          "name": "Пирожки",
+          "url": "https://food.ru/recipes/vypechka/pirozhki"
+        },
+        {
+          "name": "Чебуреки",
+          "url": "https://food.ru/recipes/vypechka/chebureki"
+        },
+        {
+          "name": "Булочки",
+          "url": "https://food.ru/recipes/vypechka/bulochki"
+        },
+        {
+          "name": "Манник",
+          "url": "https://food.ru/recipes/vypechka/mannik"
+        }
+      ]
+    },
+    {
+      "name": "Напитки",
+      "url": "https://food.ru/recipes/napitki",
+      "subcategories": [
+        {
+          "name": "Соки",
+          "url": "https://food.ru/recipes/napitki/soki"
+        },
+        {
+          "name": "Коктейли",
+          "url": "https://food.ru/recipes/napitki/kokteili"
+        },
+        {
+          "name": "Компоты",
+          "url": "https://food.ru/recipes/napitki/kompoty"
+        },
+        {
+          "name": "Настойки",
+          "url": "https://food.ru/recipes/napitki/nastoiki"
+        },
+        {
+          "name": "Какао",
+          "url": "https://food.ru/recipes/napitki/kakao"
+        },
+        {
+          "name": "Квас",
+          "url": "https://food.ru/recipes/napitki/kvas"
+        },
+        {
+          "name": "Глинтвейн",
+          "url": "https://food.ru/recipes/napitki/glintvein"
+        },
+        {
+          "name": "Чай",
+          "url": "https://food.ru/recipes/napitki/chai"
+        },
+        {
+          "name": "Кофе",
+          "url": "https://food.ru/recipes/napitki/kofe"
+        },
+        {
+          "name": "Смузи",
+          "url": "https://food.ru/recipes/napitki/smuzi"
+        }
+      ]
+    },
+    {
+      "name": "Заготовки и консервы",
+      "url": "https://food.ru/recipes/zagotovki",
+      "subcategories": [
+        {
+          "name": "Помидоры на зиму",
+          "url": "https://food.ru/recipes/zagotovki/pomidory-na-zimu"
+        },
+        {
+          "name": "Перец на зиму",
+          "url": "https://food.ru/recipes/zagotovki/perec-na-zimu"
+        },
+        {
+          "name": "Кабачки на зиму",
+          "url": "https://food.ru/recipes/zagotovki/kabachki-na-zimu"
+        },
+        {
+          "name": "Салаты на зиму",
+          "url": "https://food.ru/recipes/zagotovki/salaty-na-zimu"
+        },
+        {
+          "name": "Лечо",
+          "url": "https://food.ru/recipes/zagotovki/lecho"
+        },
+        {
+          "name": "Аджика",
+          "url": "https://food.ru/recipes/zagotovki/adzhika"
+        },
+        {
+          "name": "Соусы на зиму",
+          "url": "https://food.ru/recipes/zagotovki/sousy-na-zimu"
+        },
+        {
+          "name": "Заготовки из огурцов",
+          "url": "https://food.ru/recipes/zagotovki/zagotovki-iz-ogurcov"
+        },
+        {
+          "name": "Домашний сыр",
+          "url": "https://food.ru/recipes/zagotovki/domashnii-syr"
+        },
+        {
+          "name": "Консервирование",
+          "url": "https://food.ru/recipes/zagotovki/konservirovanie"
+        }
+      ]
+    },
+    {
+      "name": "Соусы и маринады",
+      "url": "https://food.ru/recipes/sousy-i-marinady",
+      "subcategories": [
+        {
+          "name": "Домашний майонез",
+          "url": "https://food.ru/recipes/sousy-i-marinady/domashnii-maionez"
+        },
+        {
+          "name": "Сливочные соусы",
+          "url": "https://food.ru/recipes/sousy-i-marinady/slivochnye-sousy"
+        },
+        {
+          "name": "Томатные соусы",
+          "url": "https://food.ru/recipes/sousy-i-marinady/tomatnye-sousy"
+        },
+        {
+          "name": "Подлива",
+          "url": "https://food.ru/recipes/sousy-i-marinady/podliva"
+        },
+        {
+          "name": "Маринады для рыбы",
+          "url": "https://food.ru/recipes/sousy-i-marinady/marinady-dlja-ryby"
+        },
+        {
+          "name": "Ткемали",
+          "url": "https://food.ru/recipes/sousy-i-marinady/tkemali"
+        },
+        {
+          "name": "Гуакамоле",
+          "url": "https://food.ru/recipes/sousy-i-marinady/guakamole"
+        },
+        {
+          "name": "Домашний кетчуп",
+          "url": "https://food.ru/recipes/sousy-i-marinady/domashnii-ketchup"
+        },
+        {
+          "name": "Соус тартар",
+          "url": "https://food.ru/recipes/sousy-i-marinady/sous-tartar"
+        },
+        {
+          "name": "Чесночные соусы",
+          "url": "https://food.ru/recipes/sousy-i-marinady/chesnochnye-sousy"
+        }
+      ]
+    },
+    {
+      "name": "Академия",
+      "url": "https://food.ru/magazines/akademija",
+      "subcategories": [
+        {
+          "name": "Кулинарные мастер-классы",
+          "url": "https://food.ru/magazines/akademija/master-klassy"
+        },
+        {
+          "name": "Основы кулинарии",
+          "url": "https://food.ru/magazines/akademija/osnovy-kulinarii"
+        }
+      ]
+    },
+    {
+      "name": "Все о еде",
+      "url": "https://food.ru/magazines/vse-o-ede",
+      "subcategories": [
+        {
+          "name": "еда и развлечения",
+          "url": "https://food.ru/magazines/vse-o-ede/eda-i-razvlechenija"
+        },
+        {
+          "name": "еда не дома",
+          "url": "https://food.ru/magazines/vse-o-ede/eda-ne-doma"
+        },
+        {
+          "name": "как готовить",
+          "url": "https://food.ru/magazines/vse-o-ede/kak-gotovit"
+        },
+        {
+          "name": "как обустроить кухню",
+          "url": "https://food.ru/magazines/vse-o-ede/kak-obustroit-kuhniu"
+        },
+        {
+          "name": "как экономить",
+          "url": "https://food.ru/magazines/vse-o-ede/kak-ekonomit"
+        },
+        {
+          "name": "ответственный подход",
+          "url": "https://food.ru/magazines/vse-o-ede/otvetstvennyi-podhod"
+        },
+        {
+          "name": "что съесть",
+          "url": "https://food.ru/magazines/vse-o-ede/chto-sest"
+        }
+      ]
+    },
+    {
+      "name": "Готовим детям",
+      "url": "https://food.ru/magazines/gotovim-detjam",
+      "subcategories": [
+        {
+          "name": "готовим с детьми",
+          "url": "https://food.ru/magazines/gotovim-detjam/gotovim-s-detmi"
+        },
+        {
+          "name": "здоровые привычки",
+          "url": "https://food.ru/magazines/gotovim-detjam/zdorovye-privychki"
+        },
+        {
+          "name": "как накормить",
+          "url": "https://food.ru/magazines/gotovim-detjam/kak-nakormit"
+        },
+        {
+          "name": "правильный подход",
+          "url": "https://food.ru/magazines/gotovim-detjam/pravilnyi-podhod"
+        },
+        {
+          "name": "чем кормить",
+          "url": "https://food.ru/magazines/gotovim-detjam/chem-kormit"
+        }
+      ]
+    },
+    {
+      "name": "ЗОЖ",
+      "url": "https://food.ru/magazines/zozh",
+      "subcategories": [
+        {
+          "name": "еда и вес",
+          "url": "https://food.ru/magazines/zozh/eda-i-ves"
+        },
+        {
+          "name": "еда и психология",
+          "url": "https://food.ru/magazines/zozh/eda-i-psihologija"
+        },
+        {
+          "name": "здоровая еда",
+          "url": "https://food.ru/magazines/zozh/zdorovaja-eda"
+        },
+        {
+          "name": "личный опыт",
+          "url": "https://food.ru/magazines/zozh/lichnyi-opyt"
+        },
+        {
+          "name": "польза или вред",
+          "url": "https://food.ru/magazines/zozh/polza-ili-vred"
+        }
+      ]
+    },
+    {
+      "name": "Мужская кухня",
+      "url": "https://food.ru/magazines/muzhskaja-kuhnja",
+      "subcategories": [
+        {
+          "name": "как отдохнуть",
+          "url": "https://food.ru/magazines/muzhskaja-kuhnja/kak-otdohnut"
+        },
+        {
+          "name": "культура мяса",
+          "url": "https://food.ru/magazines/muzhskaja-kuhnja/kultura-mjasa"
+        },
+        {
+          "name": "на огне",
+          "url": "https://food.ru/magazines/muzhskaja-kuhnja/na-ogne"
+        },
+        {
+          "name": "открытия",
+          "url": "https://food.ru/magazines/muzhskaja-kuhnja/otkrytija"
+        },
+        {
+          "name": "техника и девайсы",
+          "url": "https://food.ru/magazines/muzhskaja-kuhnja/tehnika-i-devaisy"
+        },
+        {
+          "name": "что приготовить",
+          "url": "https://food.ru/magazines/muzhskaja-kuhnja/chto-prigotovit"
+        }
+      ]
+    },
+    {
+      "name": "Про заготовки",
+      "url": "https://food.ru/magazines/pro-zagotovki",
+      "subcategories": [
+        {
+          "name": "как варить варенье",
+          "url": "https://food.ru/magazines/pro-zagotovki/kak-varit-varene"
+        },
+        {
+          "name": "как замораживать",
+          "url": "https://food.ru/magazines/pro-zagotovki/kak-zamorazhivat"
+        },
+        {
+          "name": "как коптить",
+          "url": "https://food.ru/magazines/pro-zagotovki/kak-koptit"
+        },
+        {
+          "name": "как солить и мариновать",
+          "url": "https://food.ru/magazines/pro-zagotovki/kak-solit-i-marinovat"
+        },
+        {
+          "name": "как сушить и вялить",
+          "url": "https://food.ru/magazines/pro-zagotovki/kak-sushit-i-vjalit"
+        },
+        {
+          "name": "как хранить",
+          "url": "https://food.ru/magazines/pro-zagotovki/kak-hranit"
+        }
+      ]
+    },
+    {
+      "name": "Разбираемся в вине",
+      "url": "https://food.ru/tags/razbiraemsja-v-vine",
+      "subcategories": []
+    },
+    {
+      "name": "Марки «Пятёрочки»",
+      "url": "https://food.ru/tags/marki-pjatrochki",
+      "subcategories": [
+        {
+          "name": "liebendorf",
+          "url": "https://food.ru/tags/liebendorf"
+        },
+        {
+          "name": "мясная ферма",
+          "url": "https://food.ru/tags/mjasnaja-ferma"
+        },
+        {
+          "name": "Рестория",
+          "url": "https://food.ru/tags/restoria"
+        },
+        {
+          "name": "Станция молочная",
+          "url": "https://food.ru/tags/milk-station"
+        },
+        {
+          "name": "Global Village",
+          "url": "https://food.ru/tags/global-village"
+        },
+        {
+          "name": "Селяночка",
+          "url": "https://food.ru/tags/selyanochka"
+        },
+        {
+          "name": "Ухтышки",
+          "url": "https://food.ru/tags/wow-it"
+        },
+        {
+          "name": "Global Village Selection",
+          "url": "https://food.ru/tags/global-village-selection"
+        },
+        {
+          "name": "Trattoria di Maestro Turatti",
+          "url": "https://food.ru/tags/trattoria"
+        },
+        {
+          "name": "Зерница",
+          "url": "https://food.ru/tags/zernica"
+        },
+        {
+          "name": "Коптильный двор",
+          "url": "https://food.ru/tags/koptilnii-dvor"
+        },
+        {
+          "name": "Fish House",
+          "url": "https://food.ru/tags/fish-house"
+        }
+      ]
+    },
+    {
+      "name": "Не лишнее, а вкусное",
+      "url": "https://food.ru/tags/ne-lishnee-a-vkusnoe",
+      "subcategories": []
+    },
+    {
+      "name": "Повышаем градус",
+      "url": "https://food.ru/tags/povyshaem-gradus",
+      "subcategories": []
+    },
+    {
+      "name": "Бюджету на пользу",
+      "url": "https://food.ru/tags/red-price",
+      "subcategories": []
+    }
+  ]
+}
