@@ -427,7 +427,7 @@ if __name__ == "__main__":
 
     all_out: List[Dict[str, Any]] = []
     for f in files:
-        data = parse_recipe_file("html_pages/"+f)
+        data = parse_recipe_file("archive/html_pages/" + f)
         all_out.append(asdict(data))
 
         out_json = Path(f).with_suffix(".json")
@@ -438,5 +438,7 @@ if __name__ == "__main__":
             f"Аллергены={data.properties.get('Аллергены')} | afterword={bool(data.afterword)}"
         )
 
-    Path("recipes_all.json").write_text(json.dumps(all_out, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("OK: recipes_all.json")
+    out_all = Path("archive/recipes_all.json")
+    out_all.parent.mkdir(parents=True, exist_ok=True)
+    out_all.write_text(json.dumps(all_out, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"OK: {out_all}")

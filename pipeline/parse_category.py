@@ -138,7 +138,7 @@ def extract_categories_and_subcategories(html: str, base_url: str = BASE_URL) ->
 
 
 def main(
-    out_file: str = "categories_and_subcategories.json",
+    out_file: str = "data/categories_and_subcategories.json",
     seed_url: Optional[str] = "https://food.ru/recipes/zakuski/rulety",
     html_file: Optional[str] = None,
 ):
@@ -159,21 +159,23 @@ def main(
         "categories": [asdict(c) for c in cats],
     }
 
-    Path(out_file).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path = Path(out_file)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"OK: сохранено в {out_file} | категорий: {len(cats)}")
 
 
 if __name__ == "__main__":
     # Вариант А: из интернета
     main(
-        out_file="categories_and_subcategories.json",
+        out_file="data/categories_and_subcategories.json",
         seed_url="https://food.ru/recipes/zakuski/rulety",
         html_file=None,
     )
 
     # Вариант Б: из локального HTML (раскомментируй)
     # main(
-    #     out_file="categories_and_subcategories.json",
+    #     out_file="data/categories_and_subcategories.json",
     #     seed_url=None,
     #     html_file="rulety.html",
     # )

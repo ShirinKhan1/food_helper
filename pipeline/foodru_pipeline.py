@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 import requests
 from bs4 import BeautifulSoup
 
-import parse_html  # твой parse_html.py (должен лежать рядом)
+import parse_html  # модуль pipeline/parse_html.py
 
 
 BASE_DEFAULT = "https://food.ru"
@@ -314,11 +314,19 @@ def iter_subcategories(categories_json: Dict[str, Any], base_url: str) -> Iterab
 # -----------------------------
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--categories", default="categories_and_subcategories.json")
+    ap.add_argument(
+        "--categories",
+        default="data/categories_and_subcategories.json",
+        help="JSON категорий (см. pipeline/parse_category.py)",
+    )
     ap.add_argument("--out", default="recipes.jsonl")           # данные рецептов (по строке на рецепт)
-    ap.add_argument("--parsed", default="parsed_urls.txt")      # какие рецепты уже сделаны
-    ap.add_argument("--errors", default="errors.jsonl")         # ошибки
-    ap.add_argument("--cache-dir", default="cache_html")
+    ap.add_argument(
+        "--parsed",
+        default="archive/parsed_urls.txt",
+        help="Список уже обработанных URL (см. archive/README.md)",
+    )
+    ap.add_argument("--errors", default="archive/errors.jsonl")
+    ap.add_argument("--cache-dir", default="archive/cache_html")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--timeout", type=int, default=30)
     ap.add_argument("--retries", type=int, default=4)

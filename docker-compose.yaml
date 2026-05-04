@@ -1,0 +1,69 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: food_helper_db
+    environment:
+      POSTGRES_DB: food_helper
+      POSTGRES_USER: food
+      POSTGRES_PASSWORD: foodpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U food -d food_helper"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  loader:
+    profiles: ["load"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: food_helper_loader
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: food_helper
+      DB_USER: food
+      DB_PASSWORD: foodpass
+      JSONL_PATH: /data/recipes.jsonl
+      BATCH_SIZE: "500"
+    volumes:
+      - ./recipes.jsonl:/data/recipes.jsonl:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    command: ["python", "scripts/ingest/load_jsonl_to_postgres.py"]
+
+  embed:
+    profiles: ["embed"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.embed
+    container_name: food_helper
+    stdin_open: true
+    tty: true
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: food_helper
+      DB_USER: food
+      DB_PASSWORD: foodpass
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - .:/app
+      - huggingface_cache:/root/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["sleep", "infinity"]
+
+volumes:
+  pgdata:
+  huggingface_cache:

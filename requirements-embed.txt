@@ -1,0 +1,14 @@
+# Эмбеддинги и запись в Postgres (pgvector). Не используется образом loader.
+# Установка: pip install -r requirements-embed.txt
+#
+# Порядок (локально): docker compose up -d db
+#   → docker compose --profile load run --rm loader   (или свой JSONL)
+#   → EMBED_PG_DSN=postgresql://food:foodpass@127.0.0.1:5433/food_helper python scripts/embedding/embed_recipes.py --from-db --only-missing
+# Либо из файла: python scripts/embedding/embed_recipes.py --input recipes.jsonl --output embeddings.json --pg-dsn "..."
+#
+sentence-transformers>=3.0.0
+numpy>=1.26.0
+psycopg2-binary>=2.9.9
+pgvector>=0.3.0
+pymorphy3>=2.0.0
+pytest>=8.0.0

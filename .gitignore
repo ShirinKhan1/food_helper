@@ -1,9 +1,15 @@
 .venv
+.env
+secrets/*.env
 __pycache__/
 cache_html/
 html_pages/
+# локальные тяжёлые файлы в archive/ (README в репозитории)
+archive/*
+!archive/README.md
 test.py
 recipes_all.json
 recipes.jsonl
 parsed_urls.txt
 errors.jsonl
+.json

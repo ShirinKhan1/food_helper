@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.git/
+.idea/
+.vscode/
+cache_html/
+html_pages/
+*.log
+embeddings.json
+archive/
