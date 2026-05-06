@@ -9,15 +9,16 @@
 | `db` | *(нет)* | `food_helper_db` | Postgres 16 + pgvector, порт **5433→5432** |
 | `loader` | `load` | `food_helper_loader` | Однократная загрузка `recipes.jsonl` в БД |
 | `embed` | `embed` | **`food_helper`** | Образ с Python, зависимостями из `requirements-embed.txt`; по умолчанию **`sleep infinity`** (удобно для `exec`, тестов и поиска) |
+| `api` | *(нет)* | `food_helper_api` | FastAPI на порту **8000→8000** |
 
-Тома: `pgdata` (данные Postgres), `huggingface_cache` (кэш моделей HF).
+Тома: `pgdata` (данные Postgres). Модель эмбеддингов сохраняется внутрь Docker-образов при сборке и используется из `/opt/models/intfloat-multilingual-e5-small`.
 
 ## Секреты и токен Hugging Face
 
 1. Скопируй [`.env.example`](../.env.example) в **`.env`** в корне репозитория (файл `.env` в git не коммитится).
-2. Укажи `HF_TOKEN=...` (read-токен с [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)), чтобы не упираться в лимиты анонимных запросов при скачивании моделей.
+2. Укажи `HF_TOKEN=...` (read-токен с [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)), если нужно скачивать модели с HF при сборке или вручную.
 
-Compose подставляет `HF_TOKEN` в сервис `embed` через `HF_TOKEN: ${HF_TOKEN:-}`.
+В обычном запуске `api` и `embed` работают с локальной моделью в offline-режиме и не ходят в HF.
 
 Дополнительно: пример без корневого `.env` — [secrets/huggingface.env.example](../secrets/huggingface.env.example) и [secrets/README.txt](../secrets/README.txt).
 
@@ -29,11 +30,63 @@ Compose подставляет `HF_TOKEN` в сервис `embed` через `HF
 docker compose build embed
 ```
 
+После изменения `requirements-api.txt`, `Dockerfile.api` или модели эмбеддингов:
+
+```powershell
+docker compose build api
+```
+
 Loader (другой Dockerfile):
 
 ```powershell
 docker compose build loader
 ```
+
+## Как перезапускать после изменений
+
+Код проекта монтируется в контейнеры как **`.:/app`**, поэтому правки `.py`, `.json`, тестов и большинства файлов приложения сразу видны внутри контейнеров. Но процесс Python сам себя не перезапускает.
+
+Если менял код API:
+
+```powershell
+docker compose restart api
+```
+
+Если менял код, которым пользуешься через долгоживущий `embed`-контейнер, чаще всего ничего пересобирать не надо. Для команд через `docker compose exec embed ...` новый запуск Python увидит свежий код. Если внутри `embed` был запущен долгий процесс, перезапусти контейнер:
+
+```powershell
+docker compose --profile embed restart embed
+```
+
+Если менял `docker-compose.yaml`, переменные окружения, порты или список volume, пересоздай контейнеры:
+
+```powershell
+docker compose up -d --force-recreate api
+docker compose --profile embed up -d --force-recreate embed
+```
+
+Если менял зависимости, Dockerfile или локально запечённую модель, сначала пересобери образ, потом пересоздай контейнер:
+
+```powershell
+docker compose build api
+docker compose up -d --force-recreate api
+```
+
+Для `embed` аналогично:
+
+```powershell
+docker compose build embed
+docker compose --profile embed up -d --force-recreate embed
+```
+
+Если менял SQL init-файлы в `db/init`, они применяются только при создании пустого Postgres-тома. Для полной пересборки БД с потерей данных:
+
+```powershell
+docker compose --profile embed down -v
+docker compose up -d db
+```
+
+Короткое правило: код — `restart`, зависимости/Dockerfile — `build` + `up --force-recreate`, схема БД из init-файлов — пересоздание тома `pgdata`.
 
 ## Поднять только БД
 
@@ -94,7 +147,7 @@ python -m pytest tests/ -q -m "not integration"
 python -m pytest tests/ -v
 ```
 
-Интеграционный сценарий «запрос → нормализация → эмбеддинг → топ-10» ([tests/test_search_user_pipeline.py](../tests/test_search_user_pipeline.py)): нужны **БД с `recipe_embeddings`** и доступ к HF. Задай DSN, например:
+Интеграционный сценарий «запрос → нормализация → эмбеддинг → топ-10» ([tests/test_search_user_pipeline.py](../tests/test_search_user_pipeline.py)): нужны **БД с `recipe_embeddings`** и доступная модель эмбеддингов. Задай DSN, например:
 
 ```powershell
 $env:EMBED_PG_DSN = "postgresql://food:foodpass@127.0.0.1:5433/food_helper"
@@ -152,7 +205,7 @@ docker compose up -d db
 docker compose --profile embed run --rm embed python scripts/embedding/embed_recipes.py --from-db --only-missing --db-fetch-batch 500
 ```
 
-Первый прогон может долго качать PyTorch и модель; кэш лежит в томе `huggingface_cache`.
+Первый build образов может долго качать PyTorch и модель. При запуске контейнеров используется локальная модель из `/opt/models/intfloat-multilingual-e5-small`.
 
 ## Остановка и тома
 
@@ -186,8 +239,8 @@ docker network inspect food_helper_default
 
 ## Краткая последовательность «с нуля»
 
-1. `.env` с `HF_TOKEN` (по желанию, но рекомендуется).
-2. `docker compose build embed`
+1. `.env` с `HF_TOKEN` (по желанию; полезно при скачивании модели во время build).
+2. `docker compose build api embed`
 3. `docker compose up -d db`
 4. При необходимости: `docker compose --profile load run --rm loader`
 5. `docker compose --profile embed run --rm embed python scripts/embedding/embed_recipes.py --from-db --only-missing`

@@ -54,16 +54,43 @@ services:
       DB_NAME: food_helper
       DB_USER: food
       DB_PASSWORD: foodpass
-      HF_TOKEN: ${HF_TOKEN:-}
+      EMBED_MODEL_NAME: intfloat/multilingual-e5-small
+      EMBED_MODEL_PATH: /opt/models/intfloat-multilingual-e5-small
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     volumes:
       - .:/app
-      - huggingface_cache:/root/.cache/huggingface
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
     command: ["sleep", "infinity"]
 
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: food_helper_api
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: food_helper
+      DB_USER: food
+      DB_PASSWORD: foodpass
+      DEFAULT_TOP_K: "5"
+      MAX_MESSAGE_CHARS: "1000"
+      EMBED_MODEL_NAME: intfloat/multilingual-e5-small
+      EMBED_MODEL_PATH: /opt/models/intfloat-multilingual-e5-small
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
 volumes:
   pgdata:
-  huggingface_cache:

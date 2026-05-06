@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -194,6 +195,7 @@ def build_payload(r: Dict[str, Any]) -> Dict[str, Any]:
 @dataclass(frozen=True)
 class EmbedConfig:
     model_name: str = "intfloat/multilingual-e5-small"
+    model_path: Optional[str] = None
     batch_size: int = 32
     normalize: bool = True
     max_seq_length: int = 512
@@ -203,8 +205,9 @@ class EmbedConfig:
 
 def _load_sentence_model(cfg: EmbedConfig) -> SentenceTransformer:
     _reset_hf_http_session()
+    model_source = cfg.model_path or cfg.model_name
     model = _retry_once_on_closed_client(
-        lambda: SentenceTransformer(cfg.model_name, device="cpu")
+        lambda: SentenceTransformer(model_source, device="cpu")
     )
     model.max_seq_length = cfg.max_seq_length
     return model
@@ -435,7 +438,16 @@ def main() -> None:
         default=None,
         help="Строка подключения psycopg2 или переменная EMBED_PG_DSN / DB_HOST,...",
     )
-    ap.add_argument("--model", default=EmbedConfig.model_name, help="Название модели HF")
+    ap.add_argument(
+        "--model",
+        default=os.getenv("EMBED_MODEL_NAME", EmbedConfig.model_name),
+        help="Название модели HF",
+    )
+    ap.add_argument(
+        "--model-path",
+        default=os.getenv("EMBED_MODEL_PATH") or None,
+        help="Локальный путь к SentenceTransformer; в БД/JSON всё равно пишется --model",
+    )
     ap.add_argument("--batch-size", type=int, default=EmbedConfig.batch_size)
     ap.add_argument("--no-normalize", action="store_true", help="Не нормализовать эмбеддинги")
     ap.add_argument("--max-seq-length", type=int, default=EmbedConfig.max_seq_length)
@@ -463,6 +475,7 @@ def main() -> None:
 
     cfg = EmbedConfig(
         model_name=args.model,
+        model_path=args.model_path,
         batch_size=args.batch_size,
         normalize=not args.no_normalize,
         max_seq_length=args.max_seq_length,

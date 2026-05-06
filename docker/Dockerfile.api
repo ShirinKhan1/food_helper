@@ -9,10 +9,10 @@ ARG EMBED_SOURCE_MODEL=intfloat/multilingual-e5-small
 ARG EMBED_MODEL_PATH=/opt/models/intfloat-multilingual-e5-small
 
 COPY requirements-embed.txt /app/requirements-embed.txt
+COPY requirements-api.txt /app/requirements-api.txt
 RUN pip install --upgrade pip \
  && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \
- && pip install --no-cache-dir -r /app/requirements-embed.txt \
- && python -c "import pytest; import pymorphy3; import sentence_transformers"
+ && pip install --no-cache-dir -r /app/requirements-api.txt
 
 RUN EMBED_SOURCE_MODEL="${EMBED_SOURCE_MODEL}" EMBED_MODEL_PATH="${EMBED_MODEL_PATH}" python -c "import os; from sentence_transformers import SentenceTransformer; model = SentenceTransformer(os.environ['EMBED_SOURCE_MODEL'], device='cpu'); model.save(os.environ['EMBED_MODEL_PATH'])"
 
@@ -23,3 +23,5 @@ ENV EMBED_MODEL_NAME=${EMBED_SOURCE_MODEL} \
     HF_DATASETS_OFFLINE=1
 
 COPY . /app
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

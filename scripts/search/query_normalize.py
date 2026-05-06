@@ -89,7 +89,6 @@ RUSSIAN_STOPWORDS: FrozenSet[str] = frozenset(
         "была",
         "сам",
         "чтоб",
-        "без",
         "будто",
         "чего",
         "раз",
