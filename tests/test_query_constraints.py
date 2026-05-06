@@ -27,6 +27,33 @@ def test_extract_without_sugar() -> None:
     assert result.exclude_ingredients == ["сахар"]
 
 
+def test_extract_include_chicken() -> None:
+    result = extract_query_constraints("Посоветуй легкий ужин с курицей без грибов")
+    assert result.include_ingredients == ["курица"]
+    assert result.exclude_ingredients == ["гриб"]
+
+
+def test_extract_include_chicken_from_recipe_phrase() -> None:
+    result = extract_query_constraints("Сколько калорий и белка в рецепте с курицей?")
+    assert result.include_ingredients == ["курица"]
+
+
+def test_extract_include_chicken_fillet() -> None:
+    result = extract_query_constraints("Что приготовить из куриного филе?")
+    assert result.include_ingredients == ["курица"]
+
+
+def test_extract_include_egg() -> None:
+    result = extract_query_constraints("Найди рецепты с яйцом")
+    assert result.include_ingredients == ["яйцо"]
+
+
+def test_does_not_treat_general_substitution_as_include() -> None:
+    result = extract_query_constraints("Чем заменить молоко?")
+    assert result.include_ingredients == []
+    assert result.exclude_ingredients == []
+
+
 def test_extract_forbidden_milk() -> None:
     result = extract_query_constraints("мне нельзя молоко")
     assert result.exclude_ingredients == ["молоко"]

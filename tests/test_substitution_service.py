@@ -31,3 +31,23 @@ def test_substitution_returns_rule_based_options() -> None:
     assert result.options
     assert result.options[0].name
     assert result.warnings
+
+
+def test_general_substitution_returns_rule_based_options() -> None:
+    service = SubstitutionService(IngredientCatalog.load())
+
+    result = service.suggest_general("молоко")
+
+    assert result.found_in_recipe is True
+    assert result.options
+    assert result.options[0].name == "растительное молоко"
+    assert result.warnings
+
+
+def test_general_substitution_empty_rules_has_warning() -> None:
+    service = SubstitutionService(IngredientCatalog.load())
+
+    result = service.suggest_general("шафран")
+
+    assert result.options == []
+    assert any("нет готового" in warning for warning in result.warnings)

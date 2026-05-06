@@ -26,14 +26,14 @@ _DETAILS_TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 _SUBSTITUTION_RE = re.compile(
-    r"(?:заменить|замену для|вместо)\s+([а-яёa-z0-9\-%\s]+?)(?=(?:\s+(?:в|для|на)\b|[?.!,]|$))",
+    r"(?:чем\s+заменить|на\s+что\s+(?:можно\s+)?заменить|заменить|замен[ау]\s+для|вместо)\s+([а-яёa-z0-9\-%\s]+?)(?=(?:\s+(?:в|для|на)\b|[?.!,]|$))",
     re.IGNORECASE,
 )
 
 
 def _extract_recipe_reference(message: str) -> dict | None:
     lowered = message.lower()
-    if "этот рецепт" in lowered or re.search(r"\bэтот\b", lowered):
+    if "этот рецепт" in lowered or re.search(r"\b(этот|этом|нём|нем)\b", lowered):
         return {"type": "selected", "value": None}
 
     match = _RECIPE_REF_RE.search(lowered)
@@ -44,17 +44,28 @@ def _extract_recipe_reference(message: str) -> dict | None:
 
 def _extract_nutrient(message: str) -> str | None:
     lowered = message.lower()
-    if "бел" in lowered:
-        return "protein"
-    if "жир" in lowered:
-        return "fat"
-    if "углев" in lowered:
-        return "carbs"
     if "бжу" in lowered:
         return "bju"
-    if "калори" in lowered or "ккал" in lowered:
-        return "calories"
+    nutrient_hits = _extract_nutrients(message)
+    if len(nutrient_hits) > 1:
+        return "bju"
+    if nutrient_hits:
+        return nutrient_hits[0]
     return None
+
+
+def _extract_nutrients(message: str) -> list[str]:
+    lowered = message.lower()
+    nutrient_hits = []
+    if "калори" in lowered or "ккал" in lowered:
+        nutrient_hits.append("calories")
+    if "бел" in lowered:
+        nutrient_hits.append("protein")
+    if "жир" in lowered:
+        nutrient_hits.append("fat")
+    if "углев" in lowered:
+        nutrient_hits.append("carbs")
+    return nutrient_hits
 
 
 def _extract_target_ingredient(message: str) -> str | None:
@@ -62,10 +73,6 @@ def _extract_target_ingredient(message: str) -> str | None:
     match = _SUBSTITUTION_RE.search(lowered)
     if match:
         return match.group(1).strip()
-
-    without_match = re.search(r"\bбез\s+([а-яёa-z0-9\-%\s]+?)(?=(?:[?.!,]|$))", lowered)
-    if without_match:
-        return without_match.group(1).strip()
     return None
 
 
@@ -97,6 +104,7 @@ class IntentRouter:
             "recipe_reference": recipe_reference,
             "target_ingredient": target_ingredient,
             "nutrient": nutrient,
+            "nutrients": _extract_nutrients(lowered),
             "recipe_title_query": recipe_title_query,
             "include_ingredients": constraints.include_ingredients,
             "exclude_ingredients": constraints.exclude_ingredients,
@@ -114,7 +122,18 @@ class IntentRouter:
                 needs_llm=False,
             )
 
-        if any(token in lowered for token in ["заменить", "замену", "вместо", "без яйца", "без молока"]):
+        if target_ingredient and any(token in lowered for token in ["заменить", "замену", "замена", "вместо"]):
+            if recipe_reference is None and not re.search(r"\b(рецепт\w*|блюд[еа])\b", lowered):
+                return IntentDecision(
+                    intent="general_substitution",
+                    route="substitution_catalog",
+                    entities=entities,
+                    needs_conversation_context=False,
+                    needs_recipe_fetch=False,
+                    needs_vector_search=False,
+                    needs_sql=False,
+                    needs_llm=False,
+                )
             return IntentDecision(
                 intent="ingredient_substitution",
                 route="substitution",

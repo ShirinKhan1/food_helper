@@ -1,0 +1,31 @@
+{"id":"search_001","category":"search_constraints","message":"Найди рецепт без молока","expected_intent":"search_recipes","expected_route":"hybrid_search","expected_exclude":["молоко"]}
+{"id":"search_002","category":"search_constraints","message":"Какие есть рецепты борща без мяса?","expected_intent":"search_recipes","expected_route":"hybrid_search","expected_exclude":["мясо"]}
+{"id":"search_003","category":"search_constraints","message":"Посоветуй легкий ужин с курицей без грибов","expected_intent":"recommend_recipes","expected_route":"hybrid_search","expected_include":["курица"],"expected_exclude":["гриб"]}
+{"id":"search_004","category":"search_constraints","message":"Что приготовить из куриного филе?","expected_intent":"search_recipes","expected_route":"hybrid_search","expected_include":["курица"]}
+{"id":"search_005","category":"search_constraints","message":"Найди рецепты с яйцом","expected_intent":"search_recipes","expected_route":"hybrid_search","expected_include":["яйцо"]}
+{"id":"search_006","category":"search_constraints","message":"Что можно приготовить на завтрак, чтобы оно было легкое?","expected_intent":"recommend_recipes","expected_route":"hybrid_search"}
+{"id":"allergy_001","category":"allergy_filters","message":"Мне нельзя молоко, что подойдет?","expected_intent":"allergy_or_exclusion","expected_route":"hybrid_search","expected_exclude":["молоко"]}
+{"id":"allergy_002","category":"allergy_filters","message":"У меня аллергия на яйцо, что можно?","expected_intent":"allergy_or_exclusion","expected_route":"hybrid_search","expected_allergy":["яйцо"]}
+{"id":"allergy_003","category":"allergy_filters","message":"Не переношу глютен, подбери завтрак","expected_intent":"allergy_or_exclusion","expected_route":"hybrid_search","expected_exclude":["глютен"]}
+{"id":"allergy_004","category":"allergy_filters","message":"Мне нельзя сахар, что можно на перекус?","expected_intent":"allergy_or_exclusion","expected_route":"hybrid_search","expected_exclude":["сахар"]}
+{"id":"general_sub_001","category":"general_substitution","message":"Чем заменить молоко?","expected_intent":"general_substitution","expected_route":"substitution_catalog"}
+{"id":"general_sub_002","category":"general_substitution","message":"Есть замена для сахара?","expected_intent":"general_substitution","expected_route":"substitution_catalog"}
+{"id":"general_sub_003","category":"general_substitution","message":"На что заменить яйцо?","expected_intent":"general_substitution","expected_route":"substitution_catalog"}
+{"id":"general_sub_004","category":"general_substitution","message":"Что использовать вместо сливочного масла?","expected_intent":"general_substitution","expected_route":"substitution_catalog"}
+{"id":"recipe_sub_001","category":"recipe_substitution","message":"На что в первом рецепте можно заменить сахар?","expected_intent":"ingredient_substitution","expected_route":"substitution"}
+{"id":"recipe_sub_002","category":"recipe_substitution","message":"На что в третьем рецепте можно заменить сахар?","expected_intent":"ingredient_substitution","expected_route":"substitution"}
+{"id":"recipe_sub_003","category":"recipe_substitution","message":"Можно заменить молоко в этом рецепте?","expected_intent":"ingredient_substitution","expected_route":"substitution"}
+{"id":"recipe_sub_004","category":"recipe_substitution","message":"На что можно заменить молоко в рецепте?","expected_intent":"ingredient_substitution","expected_route":"substitution"}
+{"id":"nutrition_001","category":"nutrition_details","message":"Сколько калорий в яблочном пироге?","expected_intent":"nutrition_question","expected_route":"sql"}
+{"id":"nutrition_002","category":"nutrition_details","message":"Сколько белка в первом?","expected_intent":"nutrition_question","expected_route":"sql"}
+{"id":"nutrition_003","category":"nutrition_details","message":"Какие БЖУ в нём?","expected_intent":"nutrition_question","expected_route":"sql"}
+{"id":"nutrition_004","category":"nutrition_details","message":"Сколько калорий и белка в рецепте с курицей?","expected_intent":"nutrition_question","expected_route":"sql","expected_include":["курица"]}
+{"id":"details_001","category":"nutrition_details","message":"Покажи второй рецепт","expected_intent":"recipe_details","expected_route":"conversation_recipe_fetch"}
+{"id":"details_002","category":"nutrition_details","message":"Как готовить этот рецепт?","expected_intent":"recipe_details","expected_route":"conversation_recipe_fetch"}
+{"id":"similar_001","category":"similar_recipes","message":"Есть что-то похожее, но без курицы?","expected_intent":"similar_recipes","expected_route":"vector_search","expected_exclude":["курица"]}
+{"id":"similar_002","category":"similar_recipes","message":"Покажи похожие рецепты","expected_intent":"similar_recipes","expected_route":"vector_search"}
+{"id":"similar_003","category":"similar_recipes","message":"Найди альтернативу этому рецепту без молока","expected_intent":"similar_recipes","expected_route":"vector_search","expected_exclude":["молоко"]}
+{"id":"ambiguity_001","category":"ambiguity","message":"Сколько калорий в борще?","expected_intent":"nutrition_question","expected_route":"sql"}
+{"id":"ambiguity_002","category":"ambiguity","message":"Покажи рецепт яблочный пирог","expected_intent":"search_recipes","expected_route":"hybrid_search"}
+{"id":"fallback_001","category":"fallback","message":"Привет, что ты умеешь?","expected_intent":"fallback","expected_route":"no_retrieval"}
+{"id":"fallback_002","category":"fallback","message":"Расскажи смешной анекдот","expected_intent":"fallback","expected_route":"no_retrieval"}

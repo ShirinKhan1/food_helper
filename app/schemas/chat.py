@@ -25,6 +25,7 @@ class IntentDecision(BaseModel):
         "recommend_recipes",
         "nutrition_question",
         "ingredient_substitution",
+        "general_substitution",
         "recipe_details",
         "similar_recipes",
         "allergy_or_exclusion",
@@ -37,6 +38,7 @@ class IntentDecision(BaseModel):
         "hybrid_search",
         "conversation_recipe_fetch",
         "substitution",
+        "substitution_catalog",
     ]
     entities: dict = Field(default_factory=dict)
     needs_conversation_context: bool = False

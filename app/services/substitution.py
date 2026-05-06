@@ -40,3 +40,23 @@ class SubstitutionService:
             options=options,
             warnings=warnings,
         )
+
+    def suggest_general(self, target_ingredient: str, *, context: str | None = None) -> SubstitutionResult:
+        canonical = self._ingredient_catalog.canonicalize(target_ingredient)
+        raw_options = self._ingredient_catalog.substitutions.get(canonical, [])
+        options = [SubstitutionOption.model_validate(option) for option in raw_options]
+
+        warnings = [
+            "Это общая rule-based рекомендация, не привязанная к конкретному рецепту. "
+            "Вкус, текстура и калорийность могут измениться."
+        ]
+        if context:
+            warnings.append(f"Контекст пользователя: {context}")
+        if not options:
+            warnings.append("Для этого ингредиента пока нет готового rule-based словаря замен.")
+
+        return SubstitutionResult(
+            found_in_recipe=True,
+            options=options,
+            warnings=warnings,
+        )

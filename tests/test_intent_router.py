@@ -24,6 +24,20 @@ def test_route_substitution_with_rank_reference() -> None:
     assert decision.entities["target_ingredient"] == "сахар"
 
 
+def test_route_general_substitution_without_recipe() -> None:
+    decision = IntentRouter().decide("Чем заменить молоко?")
+    assert decision.intent == "general_substitution"
+    assert decision.route == "substitution_catalog"
+    assert decision.entities["target_ingredient"] == "молоко"
+
+
+def test_without_milk_is_search_constraint_not_substitution() -> None:
+    decision = IntentRouter().decide("Найди рецепт без молока")
+    assert decision.intent == "search_recipes"
+    assert decision.route == "hybrid_search"
+    assert decision.entities["exclude_ingredients"] == ["молоко"]
+
+
 def test_route_recommendation() -> None:
     decision = IntentRouter().decide("Что можно приготовить на завтрак, чтобы оно было легкое?")
     assert decision.intent == "recommend_recipes"
@@ -35,6 +49,13 @@ def test_route_nutrition() -> None:
     assert decision.intent == "nutrition_question"
     assert decision.entities["nutrient"] == "calories"
     assert decision.entities["recipe_title_query"] == "яблочном пироге"
+
+
+def test_route_multi_nutrition_with_ingredient_constraint() -> None:
+    decision = IntentRouter().decide("Сколько калорий и белка в рецепте с курицей?")
+    assert decision.intent == "nutrition_question"
+    assert decision.entities["nutrient"] == "bju"
+    assert decision.entities["include_ingredients"] == ["курица"]
 
 
 def test_route_recipe_details() -> None:

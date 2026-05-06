@@ -112,9 +112,9 @@ Body:
 - Заполнено `selected_recipe`, если контекст позволил выбрать рецепт.
 - В `sources` есть ссылка на использованный рецепт.
 
-## 4. Chat: замена ингредиента
+## 4. Chat: общая замена ингредиента
 
-Проверяет отдельный intent для подбора замен ингредиентов.
+Проверяет `general_substitution`: подбор замен без привязки к конкретному рецепту.
 
 ```http
 POST {{base_url}}/v1/chat
@@ -124,7 +124,7 @@ Body:
 
 ```json
 {
-  "message": "Чем заменить сливочное масло в выпечке?",
+  "message": "Чем заменить молоко?",
   "options": {
     "top_k": 5,
     "include_debug": true
@@ -135,9 +135,68 @@ Body:
 Ожидаемо:
 
 - HTTP `200`.
-- `intent` равен `ingredient_substitution` или близкому intent для замен.
+- `intent` равен `general_substitution`.
+- `route` равен `substitution_catalog`.
 - В `substitutions` есть варианты замен, если правило найдено.
+- `recipes` пустой, `selected_recipe` равен `null`.
+- В `warnings` есть предупреждение, что рекомендация общая и не привязана к рецепту.
 - `answer` содержит человекочитаемый ответ.
+
+## 4.1. Chat: замена ингредиента в выбранном рецепте
+
+Проверяет recipe-bound substitution после поисковой выдачи в том же `conversation_id`.
+
+```http
+POST {{base_url}}/v1/chat
+```
+
+Body:
+
+```json
+{
+  "conversation_id": "{{conversation_id}}",
+  "message": "На что в первом рецепте можно заменить сахар?",
+  "options": {
+    "top_k": 5,
+    "include_debug": true
+  }
+}
+```
+
+Ожидаемо:
+
+- HTTP `200`.
+- `intent` равен `ingredient_substitution`, если рецепт найден по позиции, или `general_substitution`, если контекста рецепта нет.
+- При recipe-bound ответе заполнен `selected_recipe`.
+- В `substitutions` есть варианты замен, если правило найдено.
+
+## 4.2. Chat: фильтр “без ингредиента” не считается заменой
+
+Проверяет, что поисковый запрос с `без молока` идет в hybrid search, а не в substitution.
+
+```http
+POST {{base_url}}/v1/chat
+```
+
+Body:
+
+```json
+{
+  "message": "Найди рецепт без молока",
+  "options": {
+    "top_k": 5,
+    "include_debug": true
+  }
+}
+```
+
+Ожидаемо:
+
+- HTTP `200`.
+- `intent` равен `search_recipes` или `allergy_or_exclusion`.
+- `route` равен `hybrid_search`.
+- В `debug.constraints.exclude_ingredients` есть `молоко`.
+- В `debug.final_results` не должно быть рецептов со структурированным ингредиентом `молоко`.
 
 ## 5. Chat: вопрос по питательности
 
@@ -294,6 +353,8 @@ GET {{base_url}}/v1/recipes/999999999
 1. `GET /health` возвращает `200` и `db: ok`.
 2. `POST /v1/search/debug` возвращает непустой `final_results`.
 3. `POST /v1/chat` возвращает `answer` и хотя бы один рецепт для поискового запроса.
-4. `GET /v1/recipes/{recipe_id}` возвращает полный рецепт по ID из поиска или чата.
-5. Негативные запросы возвращают ожидаемые `400`/`404`, а не `500`.
+4. `POST /v1/chat` с `"Чем заменить молоко?"` возвращает `general_substitution` и `substitutions`.
+5. `POST /v1/chat` с `"Найди рецепт без молока"` возвращает `hybrid_search`, а `debug.constraints.exclude_ingredients` содержит `молоко`.
+6. `GET /v1/recipes/{recipe_id}` возвращает полный рецепт по ID из поиска или чата.
+7. Негативные запросы возвращают ожидаемые `400`/`404`, а не `500`.
 

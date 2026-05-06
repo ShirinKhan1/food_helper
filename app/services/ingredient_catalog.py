@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -11,6 +12,21 @@ def _data_path(filename: str) -> Path:
 
 def _load_json(filename: str) -> dict:
     return json.loads(_data_path(filename).read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def _morph_analyzer():
+    from pymorphy3 import MorphAnalyzer
+
+    return MorphAnalyzer()
+
+
+def _normalize_text(value: str) -> str:
+    parts = []
+    morph = _morph_analyzer()
+    for part in value.lower().replace("ё", "е").split():
+        parts.append(morph.parse(part.strip(".,;:!?()[]{}"))[0].normal_form)
+    return " ".join(part for part in parts if part)
 
 
 @dataclass
@@ -59,10 +75,26 @@ class IngredientCatalog:
                     names.append(name)
         return names
 
+    def characteristic_values(self, recipe_row: dict) -> list[str]:
+        props = recipe_row.get("properties") or {}
+        if not isinstance(props, dict):
+            return []
+
+        values: list[str] = []
+        allergens = props.get("Аллергены") or props.get("аллергены") or props.get("allergens") or []
+        if isinstance(allergens, list):
+            values.extend(str(item).strip().lower() for item in allergens if str(item).strip())
+        elif isinstance(allergens, str):
+            values.extend(part.strip().lower() for part in allergens.split(",") if part.strip())
+        return values
+
     def matches_any(self, recipe_row: dict, terms: list[str]) -> bool:
         if not terms:
             return False
 
+        ingredient_names = self.ingredient_names(recipe_row)
+        characteristic_values = self.characteristic_values(recipe_row)
+        normalized_characteristics = [_normalize_text(value) for value in characteristic_values]
         haystack = " ".join(
             [
                 str(recipe_row.get("title") or "").lower(),
@@ -71,13 +103,18 @@ class IngredientCatalog:
                 str(recipe_row.get("raw") or "").lower(),
             ]
         )
-        ingredient_names = self.ingredient_names(recipe_row)
 
         for term in terms:
             expanded = self.expand_term(term)
             for candidate in expanded:
-                if candidate in haystack:
+                if ingredient_names and any(candidate in ingredient for ingredient in ingredient_names):
                     return True
-                if any(candidate in ingredient for ingredient in ingredient_names):
+                normalized_candidate = _normalize_text(candidate)
+                if normalized_candidate and any(
+                    normalized_candidate in characteristic
+                    for characteristic in normalized_characteristics
+                ):
+                    return True
+                if not ingredient_names and candidate in haystack:
                     return True
         return False

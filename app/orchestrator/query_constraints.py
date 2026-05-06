@@ -19,7 +19,31 @@ _ALLERGY_RE = re.compile(
     r"(?:аллергия|аллерген(?:ы)?|аллергич(?:ен|на))\s+(?:на\s+)?([а-яёa-z0-9\-%\s,/-]+?)(?=(?:[?.!,]|$| но | что | чтобы ))",
     re.IGNORECASE,
 )
+_INCLUDE_RE_LIST = [
+    re.compile(
+        r"(?:рецепт\w*|блюд[ао]?|ужин|обед|завтрак|перекус)\s+(?:[^?.!,]*?\s)?с\s+([а-яёa-z0-9\-%\s,/-]+?)(?=(?:\s+без\b|\s+до\b|\s+для\b|\s+чтобы\b|\s+котор|[?.!,]|$))",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:что\s+)?(?:можно\s+)?приготовить\s+из\s+([а-яёa-z0-9\-%\s,/-]+?)(?=(?:\s+без\b|\s+до\b|\s+для\b|\s+чтобы\b|\s+котор|[?.!,]|$))",
+        re.IGNORECASE,
+    ),
+]
 _CALORIES_LIMIT_RE = re.compile(r"до\s+(\d{2,4})\s*к?кал", re.IGNORECASE)
+_SERVICE_INCLUDE_TOKENS = {
+    "рецепт",
+    "рецепты",
+    "блюдо",
+    "блюда",
+    "ужин",
+    "обед",
+    "завтрак",
+    "перекус",
+    "легкий",
+    "лёгкий",
+    "быстрый",
+    "низкокалорийный",
+}
 
 
 def _clean_token(value: str) -> str:
@@ -54,6 +78,16 @@ def _unique(items: Iterable[str]) -> list[str]:
     return out
 
 
+def _normalize_ingredient_phrase(value: str) -> str:
+    cleaned = _clean_token(value)
+    if not cleaned:
+        return ""
+    lemmatized = _lemmatize_phrase(cleaned)
+    if lemmatized in {"куриный филе", "куриный грудка", "куриный бедро"}:
+        return "курица"
+    return lemmatized
+
+
 def _extract_list(pattern: re.Pattern[str], message: str) -> list[str]:
     values: list[str] = []
     for match in pattern.finditer(message):
@@ -63,7 +97,21 @@ def _extract_list(pattern: re.Pattern[str], message: str) -> list[str]:
         for part in _SEPARATOR_RE.split(chunk):
             cleaned = _clean_token(part)
             if cleaned:
-                values.append(_lemmatize_phrase(cleaned))
+                values.append(_normalize_ingredient_phrase(cleaned))
+    return _unique(values)
+
+
+def _extract_include_ingredients(message: str) -> list[str]:
+    values: list[str] = []
+    for pattern in _INCLUDE_RE_LIST:
+        for match in pattern.finditer(message):
+            chunk = _clean_token(match.group(1))
+            if not chunk:
+                continue
+            for part in _SEPARATOR_RE.split(chunk):
+                normalized = _normalize_ingredient_phrase(part)
+                if normalized and normalized not in _SERVICE_INCLUDE_TOKENS:
+                    values.append(normalized)
     return _unique(values)
 
 
@@ -75,6 +123,7 @@ def extract_query_constraints(message: str) -> QueryConstraints:
     exclude_ingredients = _extract_list(_WITHOUT_RE, text)
     forbidden = _extract_list(_FORBIDDEN_RE, text)
     allergy = _extract_list(_ALLERGY_RE, text)
+    include_ingredients = _extract_include_ingredients(text)
 
     meal_type = None
     if "завтрак" in text:
@@ -120,6 +169,11 @@ def extract_query_constraints(message: str) -> QueryConstraints:
         restriction_type = "forbidden"
 
     return QueryConstraints(
+        include_ingredients=[
+            item
+            for item in include_ingredients
+            if item not in {*exclude_ingredients, *forbidden, *allergy}
+        ],
         exclude_ingredients=_unique([*exclude_ingredients, *forbidden]),
         allergy_exclusions=allergy,
         restriction_type=restriction_type,

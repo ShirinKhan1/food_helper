@@ -119,6 +119,37 @@ class ChatPipeline:
         if decision.intent == "nutrition_question":
             resolved = self._resolve_recipe(conversation_id, decision)
             if resolved.row is None:
+                if not resolved.candidates and self._should_search_candidates_for_nutrition(decision, constraints):
+                    execution = self._search_service.search(
+                        message,
+                        constraints=constraints,
+                        top_k=options.top_k,
+                    )
+                    recipes = self._rows_to_cards(execution.final_results)
+                    self._conversation_state_service.update_snapshot(
+                        conversation_id,
+                        last_recipe_results=[card.recipe_id for card in recipes],
+                        selected_recipe_id=None,
+                    )
+                    answer = self._render_nutrition_candidate_answer(
+                        recipes,
+                        nutrients=decision.entities.get("nutrients") or [decision.entities.get("nutrient")],
+                    )
+                    return ChatResponse(
+                        conversation_id=conversation_id,
+                        answer=answer,
+                        intent=decision.intent,
+                        route="hybrid_search",
+                        recipes=recipes,
+                        warnings=warnings,
+                        sources=self._sources_from_cards(recipes),
+                        debug=self._build_debug(
+                            options=options,
+                            constraints=constraints,
+                            decision=decision,
+                            execution=execution,
+                        ),
+                    )
                 return self._response_for_missing_recipe(
                     conversation_id=conversation_id,
                     decision=decision,
@@ -172,9 +203,37 @@ class ChatPipeline:
                 debug=self._build_debug(options=options, constraints=constraints, decision=decision),
             )
 
+        if decision.intent == "general_substitution":
+            target = str(decision.entities.get("target_ingredient") or "ингредиент")
+            substitution = self._substitution_service.suggest_general(target)
+            warnings = [*warnings, *substitution.warnings]
+            answer = self._render_general_substitutions_answer(target, substitution.options)
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                intent=decision.intent,
+                route=decision.route,
+                substitutions=substitution.options,
+                warnings=warnings,
+                debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+            )
+
         if decision.intent == "ingredient_substitution":
             resolved = self._resolve_recipe(conversation_id, decision)
             if resolved.row is None:
+                target = decision.entities.get("target_ingredient")
+                if target and not resolved.candidates:
+                    substitution = self._substitution_service.suggest_general(str(target))
+                    warnings = [*warnings, *substitution.warnings]
+                    return ChatResponse(
+                        conversation_id=conversation_id,
+                        answer=self._render_general_substitutions_answer(str(target), substitution.options),
+                        intent="general_substitution",
+                        route="substitution_catalog",
+                        substitutions=substitution.options,
+                        warnings=warnings,
+                        debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+                    )
                 return self._response_for_missing_recipe(
                     conversation_id=conversation_id,
                     decision=decision,
@@ -228,6 +287,10 @@ class ChatPipeline:
                 int(base_row["id"]),
                 top_k=options.top_k,
             )
+            similar_rows = [
+                row for row in similar_rows
+                if int(row.get("id") or 0) != int(base_row["id"])
+            ]
             execution = self._search_service.similar_recipes(
                 normalized_query=message,
                 base_rows=similar_rows,
@@ -281,6 +344,19 @@ class ChatPipeline:
             return ResolvedRecipe(row=None, candidates=candidates)
 
         return ResolvedRecipe(row=None, candidates=[])
+
+    def _should_search_candidates_for_nutrition(
+        self,
+        decision: IntentDecision,
+        constraints: QueryConstraints,
+    ) -> bool:
+        return bool(
+            constraints.include_ingredients
+            or constraints.exclude_ingredients
+            or constraints.allergy_exclusions
+            or constraints.meal_type
+            or decision.entities.get("recipe_title_query")
+        )
 
     def _response_for_missing_recipe(
         self,
@@ -356,6 +432,39 @@ class ChatPipeline:
         body = "\n".join(f"{card.rank}. {card.title}" for card in recipes)
         return f"{intro}\n{body}"
 
+    def _render_nutrition_candidate_answer(
+        self,
+        recipes: list[RecipeCard],
+        *,
+        nutrients: list[str | None],
+    ) -> str:
+        if not recipes:
+            return (
+                "Я не нашел подходящих рецептов, по которым можно показать КБЖУ. "
+                "Попробуйте уточнить название блюда или изменить условия поиска."
+            )
+        selected = {item for item in nutrients if item}
+        if not selected or "bju" in selected:
+            selected = {"calories", "protein", "fat", "carbs"}
+
+        body = "\n".join(
+            f"{card.rank}. {card.title}: {self._render_card_nutrition(card, selected)}"
+            for card in recipes
+        )
+        return f"Вот значения на 100 г для рецептов под ваш запрос:\n{body}"
+
+    def _render_card_nutrition(self, card: RecipeCard, nutrients: set[str]) -> str:
+        parts: list[str] = []
+        if "calories" in nutrients:
+            parts.append(f"{card.calories_kcal} кКал")
+        if "protein" in nutrients:
+            parts.append(f"{card.protein_g} г белка")
+        if "fat" in nutrients:
+            parts.append(f"{card.fat_g} г жиров")
+        if "carbs" in nutrients:
+            parts.append(f"{card.carbs_g} г углеводов")
+        return ", ".join(parts)
+
     def _render_recipe_detail_answer(self, message: str, detail: RecipeDetail) -> str:
         lowered = message.lower()
         if "ингредиент" in lowered:
@@ -380,6 +489,19 @@ class ChatPipeline:
             for item in options
         )
         return f'В рецепте "{title}" вместо "{target}" можно попробовать:\n{rendered}'
+
+    def _render_general_substitutions_answer(
+        self,
+        target: str,
+        options: list[SubstitutionOption],
+    ) -> str:
+        if not options:
+            return f'Для ингредиента "{target}" пока нет готовых замен в rule-based каталоге.'
+        rendered = "\n".join(
+            f"- {item.name}: {item.note or 'подходит как замена'}"
+            for item in options
+        )
+        return f'Вместо "{target}" обычно можно попробовать:\n{rendered}'
 
     def _render_similar_answer(self, base_title: str, recipes: list[RecipeCard]) -> str:
         if not recipes:

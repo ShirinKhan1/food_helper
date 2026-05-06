@@ -218,6 +218,9 @@ class InMemorySearchService:
         elif "молоко" in lowered:
             rows = [DATASET[5], DATASET[7]]
             normalized_query = "молоко"
+        elif "куриц" in lowered or "курин" in lowered:
+            rows = [DATASET[6], DATASET[7]]
+            normalized_query = "курица"
         elif "яблоч" in lowered:
             rows = [DATASET[3]]
             normalized_query = "яблочный пирог"
@@ -345,6 +348,92 @@ def test_scenario_6_protein_by_rank() -> None:
     assert "белка" in response.answer
 
 
+def test_nutrition_with_ingredient_query_returns_candidates() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    response = pipeline.handle_chat(
+        ChatRequest(conversation_id="c-nutrition-search", message="Сколько калорий и белка в рецепте с курицей?")
+    )
+
+    assert response.intent == "nutrition_question"
+    assert response.route == "hybrid_search"
+    assert response.recipes
+    assert response.nutrition is None
+    assert "кКал" in response.answer
+    assert "г белка" in response.answer
+    assert "Выберите номер" not in response.answer
+    assert state.get_snapshot("c-nutrition-search").last_recipe_results == [
+        recipe.recipe_id for recipe in response.recipes
+    ]
+
+
+def test_flow_search_details_then_nutrition_keeps_selected_recipe() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    search_response = pipeline.handle_chat(
+        ChatRequest(conversation_id="flow-1", message="Найди рецепты с борщом без мяса")
+    )
+    assert search_response.recipes
+
+    details_response = pipeline.handle_chat(
+        ChatRequest(conversation_id="flow-1", message="Покажи первый рецепт")
+    )
+    assert details_response.selected_recipe is not None
+    assert state.get_snapshot("flow-1").selected_recipe_id == details_response.selected_recipe.recipe_id
+
+    nutrition_response = pipeline.handle_chat(
+        ChatRequest(conversation_id="flow-1", message="Сколько белка в нём?")
+    )
+    assert nutrition_response.nutrition is not None
+    assert nutrition_response.selected_recipe is not None
+    assert nutrition_response.selected_recipe.recipe_id == details_response.selected_recipe.recipe_id
+
+
+def test_general_substitution_without_recipe_context() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    response = pipeline.handle_chat(
+        ChatRequest(conversation_id="c-general", message="Чем заменить молоко?")
+    )
+
+    assert response.intent == "general_substitution"
+    assert response.route == "substitution_catalog"
+    assert response.substitutions
+    assert response.selected_recipe is None
+
+
+def test_recipe_substitution_falls_back_to_general_without_recipe() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    response = pipeline.handle_chat(
+        ChatRequest(conversation_id="c-fallback", message="На что можно заменить молоко в рецепте?")
+    )
+
+    assert response.intent == "general_substitution"
+    assert response.route == "substitution_catalog"
+    assert response.substitutions
+
+
+def test_recipe_title_ambiguity_returns_candidates() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    response = pipeline.handle_chat(
+        ChatRequest(conversation_id="c-ambiguous", message="Сколько калорий в борще?")
+    )
+
+    assert response.intent == "nutrition_question"
+    assert response.recipes
+    assert response.selected_recipe is None
+    assert state.get_snapshot("c-ambiguous").last_recipe_results == [
+        recipe.recipe_id for recipe in response.recipes
+    ]
+
+
 def test_scenario_7_allergy_warning() -> None:
     state = InMemoryConversationStateService()
     pipeline = build_pipeline(state)
@@ -363,3 +452,5 @@ def test_scenario_8_similar_without_chicken() -> None:
     assert response.intent == "similar_recipes"
     assert response.recipes
     assert all("кур" not in recipe.title.lower() for recipe in response.recipes)
+    assert state.get_snapshot("c8").selected_recipe_id == 6
+    assert all(recipe.recipe_id != 6 for recipe in response.recipes)
