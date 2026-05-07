@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from app.services.llm.context import LLMAnswerContext
 
@@ -14,6 +15,27 @@ SYSTEM_PROMPT = """
 - Если данных мало, честно скажи, что нужно уточнить.
 - Не давай медицинских гарантий.
 """.strip()
+
+
+def truncate_llm_context(
+    context: LLMAnswerContext,
+    *,
+    max_recipes: int,
+    max_ingredients: int,
+    max_steps: int,
+) -> LLMAnswerContext:
+    max_r = max(0, max_recipes)
+    recipes = list(context.recipes[:max_r])
+    detail = context.recipe_detail
+    if detail is not None:
+        mi, ms = max(0, max_ingredients), max(0, max_steps)
+        detail = detail.model_copy(
+            update={
+                "ingredients": list(detail.ingredients[:mi]),
+                "steps": list(detail.steps[:ms]),
+            }
+        )
+    return replace(context, recipes=recipes, recipe_detail=detail)
 
 
 def build_user_prompt(context: LLMAnswerContext) -> str:

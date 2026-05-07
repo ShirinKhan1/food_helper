@@ -82,6 +82,12 @@ def build_services(settings: Settings | None = None) -> AppServices:
         llm_strict_context=resolved_settings.llm_strict_context,
         llm_max_answer_chars=resolved_settings.llm_max_answer_chars,
         llm_strip_think_tags=resolved_settings.llm_strip_think_tags,
+        llm_log_prompts=resolved_settings.llm_log_prompts,
+        llm_log_responses=resolved_settings.llm_log_responses,
+        llm_min_recipes_for_list_answer=resolved_settings.llm_min_recipes_for_list_answer,
+        llm_max_context_recipes=resolved_settings.llm_max_context_recipes,
+        llm_max_context_ingredients=resolved_settings.llm_max_context_ingredients,
+        llm_max_context_steps=resolved_settings.llm_max_context_steps,
     )
     chat_pipeline = ChatPipeline(
         settings=resolved_settings,

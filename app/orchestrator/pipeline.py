@@ -156,6 +156,7 @@ class ChatPipeline:
                         fallback_answer=fallback_answer,
                         recipes=recipes,
                         warnings=warnings,
+                        constraints=constraints,
                         sources=self._sources_from_cards(recipes),
                     )
                     return ChatResponse(
@@ -191,6 +192,7 @@ class ChatPipeline:
                 nutrition=nutrition,
                 detail=detail,
                 warnings=warnings,
+                constraints=constraints,
                 sources=[self._source_from_detail(detail)],
             )
             self._conversation_state_service.update_snapshot(
@@ -235,6 +237,7 @@ class ChatPipeline:
                 fallback_answer=fallback_answer,
                 detail=detail,
                 warnings=warnings,
+                constraints=constraints,
                 sources=[self._source_from_detail(detail)],
             )
             return ChatResponse(
@@ -263,6 +266,7 @@ class ChatPipeline:
                 fallback_answer=fallback_answer,
                 substitutions=substitution.options,
                 warnings=warnings,
+                constraints=constraints,
             )
             return ChatResponse(
                 conversation_id=conversation_id,
@@ -329,6 +333,7 @@ class ChatPipeline:
                 detail=detail,
                 substitutions=substitution.options,
                 warnings=warnings,
+                constraints=constraints,
             )
             return ChatResponse(
                 conversation_id=conversation_id,

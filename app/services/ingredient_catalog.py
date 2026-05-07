@@ -29,6 +29,11 @@ def _normalize_text(value: str) -> str:
     return " ".join(part for part in parts if part)
 
 
+def normalize_ru_text_to_lemmas(value: str) -> str:
+    """Lemmatize Russian text to a space-separated normal form (shared with recipe matching)."""
+    return _normalize_text(value)
+
+
 @dataclass
 class IngredientCatalog:
     aliases: dict[str, str]

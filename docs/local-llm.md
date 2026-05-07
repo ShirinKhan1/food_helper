@@ -91,7 +91,7 @@ curl http://localhost:11434/api/generate -d "{
 | `LLM_POSTCHECK_ENABLED` | Включить post-check защиту от галлюцинаций | `true` |
 | `LLM_STRICT_CONTEXT` | Запрет на новые факты вне context | `true` |
 | `LLM_MAX_ANSWER_CHARS` | Максимальная длина ответа LLM | `2500` |
-| `LLM_STRIP_THINK_TAGS` | Удалять `<think>...</think>` из ответа | `true` |
+| `LLM_STRIP_THINK_TAGS` | Удалять из ответа скрытые блоки рассуждений (Qwen3/Ollama: парные XML-теги `think` вокруг текста; также `reasoning`, `redacted_thinking`) | `true` |
 
 Рекомендуемый набор для локального режима:
 

@@ -38,6 +38,12 @@ def _pipeline(*, include_llm: bool = False) -> ChatPipeline:
         llm_strict_context=settings.llm_strict_context,
         llm_max_answer_chars=settings.llm_max_answer_chars,
         llm_strip_think_tags=settings.llm_strip_think_tags,
+        llm_log_prompts=settings.llm_log_prompts,
+        llm_log_responses=settings.llm_log_responses,
+        llm_min_recipes_for_list_answer=settings.llm_min_recipes_for_list_answer,
+        llm_max_context_recipes=settings.llm_max_context_recipes,
+        llm_max_context_ingredients=settings.llm_max_context_ingredients,
+        llm_max_context_steps=settings.llm_max_context_steps,
     )
     return ChatPipeline(
         settings=settings,

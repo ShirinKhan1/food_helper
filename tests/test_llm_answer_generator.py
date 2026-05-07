@@ -48,6 +48,12 @@ def test_answer_generator_returns_llm_text_on_success() -> None:
         llm_strict_context=True,
         llm_max_answer_chars=2500,
         llm_strip_think_tags=True,
+        llm_log_prompts=False,
+        llm_log_responses=False,
+        llm_min_recipes_for_list_answer=1,
+        llm_max_context_recipes=5,
+        llm_max_context_ingredients=30,
+        llm_max_context_steps=20,
     )
     out = gen.generate_recipe_list_answer(
         intent="search_recipes",
@@ -73,6 +79,12 @@ def test_answer_generator_fallback_on_llm_error() -> None:
         llm_strict_context=True,
         llm_max_answer_chars=2500,
         llm_strip_think_tags=True,
+        llm_log_prompts=False,
+        llm_log_responses=False,
+        llm_min_recipes_for_list_answer=1,
+        llm_max_context_recipes=5,
+        llm_max_context_ingredients=30,
+        llm_max_context_steps=20,
     )
     out = gen.generate_recipe_list_answer(
         intent="search_recipes",
@@ -98,6 +110,12 @@ def test_answer_generator_empty_recipes_no_llm_call() -> None:
         llm_strict_context=True,
         llm_max_answer_chars=2500,
         llm_strip_think_tags=True,
+        llm_log_prompts=False,
+        llm_log_responses=False,
+        llm_min_recipes_for_list_answer=1,
+        llm_max_context_recipes=5,
+        llm_max_context_ingredients=30,
+        llm_max_context_steps=20,
     )
     out = gen.generate_recipe_list_answer(
         intent="search_recipes",
@@ -123,6 +141,12 @@ def test_answer_generator_null_client_returns_fallback() -> None:
         llm_strict_context=True,
         llm_max_answer_chars=2500,
         llm_strip_think_tags=True,
+        llm_log_prompts=False,
+        llm_log_responses=False,
+        llm_min_recipes_for_list_answer=1,
+        llm_max_context_recipes=5,
+        llm_max_context_ingredients=30,
+        llm_max_context_steps=20,
     )
     out = gen.generate_recipe_list_answer(
         intent="search_recipes",
@@ -148,6 +172,12 @@ def test_answer_generator_rejects_hallucinated_title() -> None:
         llm_strict_context=True,
         llm_max_answer_chars=2500,
         llm_strip_think_tags=True,
+        llm_log_prompts=False,
+        llm_log_responses=False,
+        llm_min_recipes_for_list_answer=1,
+        llm_max_context_recipes=5,
+        llm_max_context_ingredients=30,
+        llm_max_context_steps=20,
     )
     out = gen.generate_recipe_list_answer(
         intent="search_recipes",
@@ -158,3 +188,44 @@ def test_answer_generator_rejects_hallucinated_title() -> None:
     )
     assert out.answer == "rule-based"
     assert out.fallback_reason == "postcheck_hallucinated_recipe"
+
+
+def test_answer_generator_skips_llm_when_below_min_recipes() -> None:
+    class CountingLLM:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate(self, request: LLMGenerateRequest) -> str:
+            self.calls += 1
+            return "LLM"
+
+    llm = CountingLLM()
+    gen = AnswerGenerator(
+        llm_client=llm,
+        temperature=0.2,
+        max_tokens=500,
+        num_ctx=4096,
+        think=False,
+        llm_enabled=True,
+        answer_mode="auto",
+        llm_postcheck_enabled=True,
+        llm_strict_context=True,
+        llm_max_answer_chars=2500,
+        llm_strip_think_tags=True,
+        llm_log_prompts=False,
+        llm_log_responses=False,
+        llm_min_recipes_for_list_answer=2,
+        llm_max_context_recipes=5,
+        llm_max_context_ingredients=30,
+        llm_max_context_steps=20,
+    )
+    out = gen.generate_recipe_list_answer(
+        intent="search_recipes",
+        user_message="x",
+        fallback_answer="rule-based",
+        recipes=[_card()],
+        warnings=[],
+    )
+    assert llm.calls == 0
+    assert out.answer == "rule-based"
+    assert out.fallback_reason == "no_context"

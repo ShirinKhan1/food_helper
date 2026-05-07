@@ -31,6 +31,12 @@ def _generator(fake: FakeLLMClient, *, mode: str = "auto", enabled: bool = True)
         llm_strict_context=True,
         llm_max_answer_chars=2500,
         llm_strip_think_tags=True,
+        llm_log_prompts=False,
+        llm_log_responses=False,
+        llm_min_recipes_for_list_answer=1,
+        llm_max_context_recipes=5,
+        llm_max_context_ingredients=30,
+        llm_max_context_steps=20,
     )
 
 

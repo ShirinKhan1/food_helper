@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.services.ingredient_catalog import normalize_ru_text_to_lemmas
 from app.services.llm.context import LLMAnswerContext
 
 FORBIDDEN_MEDICAL_GUARANTEES = (
@@ -12,6 +13,11 @@ FORBIDDEN_MEDICAL_GUARANTEES = (
     "гарантированно без аллергена",
     "медицински безопасно",
 )
+
+_EXCLUSION_NEGATOR_LEMMAS = frozenset(
+    {"без", "кроме", "исключая", "нет", "исключить", "избегать", "минус"}
+)
+_MIN_EXCLUSION_TERM_LETTERS = 3
 
 
 @dataclass(frozen=True)
@@ -49,6 +55,9 @@ def validate_llm_answer(
     if any(phrase in lowered for phrase in FORBIDDEN_MEDICAL_GUARANTEES):
         errors.append("medical_guarantee")
 
+    if _answer_violates_excluded_ingredients(sanitized, context):
+        errors.append("forbidden_ingredient_mentioned")
+
     if context.scenario in {"recipe_list", "similar_recipes"}:
         allowed_titles = {recipe.title.lower() for recipe in context.recipes}
         if allowed_titles and _contains_unknown_list_title(sanitized, allowed_titles):
@@ -75,8 +84,60 @@ def validate_llm_answer(
     return PostcheckResult(ok=not errors, errors=errors, sanitized_answer=sanitized)
 
 
+def _answer_violates_excluded_ingredients(sanitized: str, context: LLMAnswerContext) -> bool:
+    if context.scenario in {"ingredient_substitution", "general_substitution"}:
+        return False
+    if not context.constraints:
+        return False
+    raw_terms = [*context.constraints.exclude_ingredients, *context.constraints.allergy_exclusions]
+    seen: set[str] = set()
+    terms: list[str] = []
+    for t in raw_terms:
+        nt = normalize_ru_text_to_lemmas(t)
+        if not nt or nt in seen:
+            continue
+        if sum(1 for ch in nt if ch.isalpha()) < _MIN_EXCLUSION_TERM_LETTERS:
+            continue
+        seen.add(nt)
+        terms.append(nt)
+    if not terms:
+        return False
+
+    norm_answer = normalize_ru_text_to_lemmas(sanitized)
+    tokens = norm_answer.split()
+    for term in terms:
+        term_tokens = term.split()
+        if not term_tokens or len(tokens) < len(term_tokens):
+            continue
+        n = len(term_tokens)
+        for i in range(len(tokens) - n + 1):
+            if tokens[i : i + n] != term_tokens:
+                continue
+            prev = tokens[i - 1] if i > 0 else None
+            if prev in _EXCLUSION_NEGATOR_LEMMAS:
+                continue
+            return True
+    return False
+
+
+_t = "think"
+# Model-specific reasoning wrappers removed by _THINK_BLOCK_RES below.
+_THINK_BLOCK_RES = (
+    re.compile(rf"<{_t}>.*?</{_t}>", re.IGNORECASE | re.DOTALL),
+    re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL),
+    re.compile(r"<reasoning>.*?</reasoning>", re.IGNORECASE | re.DOTALL),
+)
+
+
 def _strip_think_blocks(text: str) -> str:
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    out = text
+    while True:
+        prev = out
+        for pattern in _THINK_BLOCK_RES:
+            out = pattern.sub("", out)
+        if out == prev:
+            break
+    return out
 
 
 def _extract_numbers(text: str) -> set[str]:

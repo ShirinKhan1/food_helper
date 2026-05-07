@@ -9,7 +9,7 @@ from app.services.llm.base import LLMClient, LLMGenerateRequest
 from app.services.llm.context import LLMAnswerContext
 from app.services.llm.null import NullLLMClient
 from app.services.llm.postcheck import PostcheckPolicy, validate_llm_answer
-from app.services.llm.prompts import SYSTEM_PROMPT, build_user_prompt
+from app.services.llm.prompts import SYSTEM_PROMPT, build_user_prompt, truncate_llm_context
 from app.services.llm.result import AnswerGenerationResult
 
 LOGGER = logging.getLogger(__name__)
@@ -41,6 +41,12 @@ class AnswerGenerator:
         llm_strict_context: bool,
         llm_max_answer_chars: int,
         llm_strip_think_tags: bool,
+        llm_log_prompts: bool,
+        llm_log_responses: bool,
+        llm_min_recipes_for_list_answer: int,
+        llm_max_context_recipes: int,
+        llm_max_context_ingredients: int,
+        llm_max_context_steps: int,
     ) -> None:
         self._llm_client = llm_client
         self._temperature = temperature
@@ -53,6 +59,12 @@ class AnswerGenerator:
         self._llm_strict_context = llm_strict_context
         self._llm_max_answer_chars = llm_max_answer_chars
         self._llm_strip_think_tags = llm_strip_think_tags
+        self._llm_log_prompts = llm_log_prompts
+        self._llm_log_responses = llm_log_responses
+        self._llm_min_recipes_for_list_answer = llm_min_recipes_for_list_answer
+        self._llm_max_context_recipes = llm_max_context_recipes
+        self._llm_max_context_ingredients = llm_max_context_ingredients
+        self._llm_max_context_steps = llm_max_context_steps
 
     def generate_recipe_list_answer(
         self,
@@ -80,7 +92,7 @@ class AnswerGenerator:
             user_message=user_message,
             fallback_answer=fallback_answer,
             context=context,
-            allow_llm=bool(recipes),
+            allow_llm=len(recipes) >= self._llm_min_recipes_for_list_answer,
         )
 
     def generate_recipe_detail_answer(
@@ -90,11 +102,13 @@ class AnswerGenerator:
         fallback_answer: str,
         detail: RecipeDetail,
         warnings: list[str],
+        constraints: QueryConstraints | None = None,
         sources: list[SourceInfo] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="recipe_detail",
             user_message=user_message,
+            constraints=constraints,
             recipe_detail=detail,
             warnings=warnings,
             sources=sources or [],
@@ -116,11 +130,13 @@ class AnswerGenerator:
         nutrition: NutritionInfo,
         detail: RecipeDetail,
         warnings: list[str],
+        constraints: QueryConstraints | None = None,
         sources: list[SourceInfo] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="nutrition",
             user_message=user_message,
+            constraints=constraints,
             recipe_detail=detail,
             nutrition=nutrition,
             warnings=warnings,
@@ -143,11 +159,13 @@ class AnswerGenerator:
         fallback_answer: str,
         recipes: list[RecipeCard],
         warnings: list[str],
+        constraints: QueryConstraints | None = None,
         sources: list[SourceInfo] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="nutrition_candidates",
             user_message=user_message,
+            constraints=constraints,
             recipes=recipes,
             warnings=warnings,
             sources=sources or [],
@@ -158,7 +176,7 @@ class AnswerGenerator:
             user_message=user_message,
             fallback_answer=fallback_answer,
             context=context,
-            allow_llm=bool(recipes),
+            allow_llm=len(recipes) >= self._llm_min_recipes_for_list_answer,
         )
 
     def generate_substitution_answer(
@@ -169,10 +187,12 @@ class AnswerGenerator:
         detail: RecipeDetail | None,
         substitutions: list[SubstitutionOption],
         warnings: list[str],
+        constraints: QueryConstraints | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="ingredient_substitution",
             user_message=user_message,
+            constraints=constraints,
             recipe_detail=detail,
             substitutions=substitutions,
             warnings=warnings,
@@ -193,10 +213,12 @@ class AnswerGenerator:
         fallback_answer: str,
         substitutions: list[SubstitutionOption],
         warnings: list[str],
+        constraints: QueryConstraints | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="general_substitution",
             user_message=user_message,
+            constraints=constraints,
             substitutions=substitutions,
             warnings=warnings,
         )
@@ -265,7 +287,15 @@ class AnswerGenerator:
         if reason:
             return AnswerGenerationResult(answer=fallback_answer, used_llm=False, fallback_reason=reason)
 
-        prompt = build_user_prompt(context)
+        prompt_context = truncate_llm_context(
+            context,
+            max_recipes=self._llm_max_context_recipes,
+            max_ingredients=self._llm_max_context_ingredients,
+            max_steps=self._llm_max_context_steps,
+        )
+        prompt = build_user_prompt(prompt_context)
+        if self._llm_log_prompts:
+            LOGGER.debug("LLM prompt chars=%s preview=%r", len(prompt), prompt[:500])
         started_at = time.perf_counter()
         try:
             raw_answer = self._llm_client.generate(
@@ -287,6 +317,9 @@ class AnswerGenerator:
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         if not raw_answer.strip():
             return AnswerGenerationResult(answer=fallback_answer, used_llm=False, fallback_reason="llm_empty_response")
+
+        if self._llm_log_responses:
+            LOGGER.debug("LLM raw response chars=%s preview=%r", len(raw_answer), raw_answer[:500])
 
         if not self._llm_postcheck_enabled:
             return AnswerGenerationResult(
@@ -347,4 +380,6 @@ class AnswerGenerator:
             return "postcheck_hallucinated_nutrition"
         if "medical_guarantee" in errors:
             return "postcheck_medical_guarantee"
+        if "forbidden_ingredient_mentioned" in errors:
+            return "postcheck_forbidden_ingredient"
         return "postcheck_failed"
