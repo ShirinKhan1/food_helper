@@ -8,6 +8,7 @@ from app.orchestrator.query_constraints import extract_query_constraints
 from app.schemas.chat import ChatDebugInfo, ChatOptions, ChatRequest, ChatResponse, IntentDecision
 from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceInfo, SubstitutionOption
 from app.schemas.search import QueryConstraints
+from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationStateService
 from app.services.nutrition import NutritionService
 from app.services.recipe_repository import RecipeRepository
@@ -39,6 +40,7 @@ class ChatPipeline:
         nutrition_service: NutritionService,
         substitution_service: SubstitutionService,
         conversation_state_service: ConversationStateService,
+        answer_generator: AnswerGenerator,
     ) -> None:
         self._settings = settings
         self._router = router
@@ -48,6 +50,7 @@ class ChatPipeline:
         self._nutrition_service = nutrition_service
         self._substitution_service = substitution_service
         self._conversation_state_service = conversation_state_service
+        self._answer_generator = answer_generator
 
     def handle_chat(self, request: ChatRequest) -> ChatResponse:
         conversation_id = self._conversation_state_service.ensure_conversation(
@@ -99,7 +102,13 @@ class ChatPipeline:
                 last_recipe_results=[card.recipe_id for card in recipes],
                 selected_recipe_id=None,
             )
-            answer = self._render_recipe_list_answer(decision.intent, recipes)
+            fallback_answer = self._render_recipe_list_answer(decision.intent, recipes)
+            answer = self._answer_generator.generate_recipe_list_answer(
+                user_message=message,
+                fallback_answer=fallback_answer,
+                recipes=recipes,
+                warnings=warnings,
+            )
             return ChatResponse(
                 conversation_id=conversation_id,
                 answer=answer,
@@ -302,7 +311,15 @@ class ChatPipeline:
                 conversation_id,
                 last_recipe_results=[card.recipe_id for card in recipes],
             )
-            answer = self._render_similar_answer(base_row.get("title") or "выбранного рецепта", recipes)
+            fallback_answer = self._render_similar_answer(
+                base_row.get("title") or "выбранного рецепта", recipes
+            )
+            answer = self._answer_generator.generate_recipe_list_answer(
+                user_message=message,
+                fallback_answer=fallback_answer,
+                recipes=recipes,
+                warnings=warnings,
+            )
             return ChatResponse(
                 conversation_id=conversation_id,
                 answer=answer,

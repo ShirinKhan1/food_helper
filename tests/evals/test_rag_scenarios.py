@@ -11,7 +11,9 @@ from app.core.config import Settings
 from app.orchestrator.intent_router import IntentRouter
 from app.orchestrator.pipeline import ChatPipeline
 from app.schemas.chat import ChatRequest
+from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationSnapshot
+from app.services.llm.null import NullLLMClient
 from app.services.ingredient_catalog import IngredientCatalog
 from app.services.recipe_repository import RecipeRepository
 from app.services.substitution import SubstitutionService
@@ -276,6 +278,13 @@ class SimpleExecution:
 
 def build_pipeline(state_service: InMemoryConversationStateService) -> ChatPipeline:
     settings = Settings.from_env()
+    answer_generator = AnswerGenerator(
+        llm_client=NullLLMClient(),
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+        num_ctx=settings.llm_num_ctx,
+        think=settings.llm_think,
+    )
     return ChatPipeline(
         settings=settings,
         router=IntentRouter(),
@@ -285,6 +294,7 @@ def build_pipeline(state_service: InMemoryConversationStateService) -> ChatPipel
         nutrition_service=InMemoryNutritionService(),
         substitution_service=SubstitutionService(IngredientCatalog.load()),
         conversation_state_service=state_service,
+        answer_generator=answer_generator,
     )
 
 

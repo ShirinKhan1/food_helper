@@ -6,6 +6,7 @@ from app.core.config import Settings
 from app.core.db import Database
 from app.orchestrator.intent_router import IntentRouter
 from app.orchestrator.pipeline import ChatPipeline
+from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationStateService
 from app.services.embeddings import EmbeddingService
 from app.services.hybrid_search import HybridSearchService
@@ -13,6 +14,8 @@ from app.services.ingredient_catalog import IngredientCatalog
 from app.services.keyword_search import KeywordSearchService
 from app.services.nutrition import NutritionService
 from app.services.recipe_repository import RecipeRepository
+from app.services.llm.null import NullLLMClient
+from app.services.llm.ollama import OllamaLLMClient
 from app.services.search_service import SearchService
 from app.services.substitution import SubstitutionService
 from app.services.vector_search import VectorSearchService
@@ -33,6 +36,7 @@ class AppServices:
     substitution_service: SubstitutionService
     conversation_state_service: ConversationStateService
     intent_router: IntentRouter
+    answer_generator: AnswerGenerator
     chat_pipeline: ChatPipeline
 
 
@@ -57,6 +61,22 @@ def build_services(settings: Settings | None = None) -> AppServices:
     substitution_service = SubstitutionService(ingredient_catalog)
     conversation_state_service = ConversationStateService(db)
     intent_router = IntentRouter()
+    if resolved_settings.llm_enabled and resolved_settings.llm_provider == "ollama":
+        llm_client = OllamaLLMClient(
+            base_url=resolved_settings.llm_base_url,
+            model=resolved_settings.llm_model,
+            timeout_seconds=resolved_settings.llm_timeout_seconds,
+        )
+    else:
+        llm_client = NullLLMClient()
+
+    answer_generator = AnswerGenerator(
+        llm_client=llm_client,
+        temperature=resolved_settings.llm_temperature,
+        max_tokens=resolved_settings.llm_max_tokens,
+        num_ctx=resolved_settings.llm_num_ctx,
+        think=resolved_settings.llm_think,
+    )
     chat_pipeline = ChatPipeline(
         settings=resolved_settings,
         router=intent_router,
@@ -66,6 +86,7 @@ def build_services(settings: Settings | None = None) -> AppServices:
         nutrition_service=nutrition_service,
         substitution_service=substitution_service,
         conversation_state_service=conversation_state_service,
+        answer_generator=answer_generator,
     )
     return AppServices(
         settings=resolved_settings,
@@ -81,5 +102,6 @@ def build_services(settings: Settings | None = None) -> AppServices:
         substitution_service=substitution_service,
         conversation_state_service=conversation_state_service,
         intent_router=intent_router,
+        answer_generator=answer_generator,
         chat_pipeline=chat_pipeline,
     )

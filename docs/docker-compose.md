@@ -7,11 +7,41 @@
 | Сервис | Профиль | Контейнер | Назначение |
 |--------|---------|-----------|------------|
 | `db` | *(нет)* | `food_helper_db` | Postgres 16 + pgvector, порт **5433→5432** |
+| `ollama` | *(нет)* | `food_helper_ollama` | Локальный LLM runtime, порт **11434→11434**, модели в томе `ollama_data` |
 | `loader` | `load` | `food_helper_loader` | Однократная загрузка `recipes.jsonl` в БД |
 | `embed` | `embed` | **`food_helper`** | Образ с Python, зависимостями из `requirements-embed.txt`; по умолчанию **`sleep infinity`** (удобно для `exec`, тестов и поиска) |
-| `api` | *(нет)* | `food_helper_api` | FastAPI на порту **8000→8000** |
+| `api` | *(нет)* | `food_helper_api` | FastAPI на порту **8000→8000**; LLM-запросы идут в `http://ollama:11434` |
 
-Тома: `pgdata` (данные Postgres). Модель эмбеддингов сохраняется внутрь Docker-образов при сборке и используется из `/opt/models/intfloat-multilingual-e5-small`.
+Тома: `pgdata` (данные Postgres), `ollama_data` (скачанные модели Ollama). Модель эмбеддингов сохраняется внутрь Docker-образов при сборке и используется из `/opt/models/intfloat-multilingual-e5-small`.
+
+## Локальная LLM в Docker (Ollama в контейнере)
+
+По умолчанию `api` уже настроен на контейнерный Ollama:
+
+- `LLM_ENABLED=true`
+- `LLM_PROVIDER=ollama`
+- `LLM_MODEL=qwen3:4b`
+- `LLM_BASE_URL=http://ollama:11434`
+
+Запуск:
+
+```powershell
+docker compose up -d db ollama api
+```
+
+Скачать модель внутрь контейнера Ollama:
+
+```powershell
+docker compose exec ollama ollama pull qwen3:4b
+docker compose exec ollama ollama list
+```
+
+Быстрые проверки:
+
+```powershell
+docker compose exec ollama ollama ps
+curl http://localhost:8000/v1/chat -H "Content-Type: application/json" -d "{\"message\":\"Подбери рецепты на ужин без мяса\",\"options\":{\"top_k\":5}}"
+```
 
 ## Секреты и токен Hugging Face
 
@@ -99,6 +129,13 @@ docker compose up -d db
 `postgresql://food:foodpass@127.0.0.1:5433/food_helper`
 
 Переменные для скриптов без DSN-строки: `DB_HOST=127.0.0.1`, `DB_PORT=5433`, `DB_NAME=food_helper`, `DB_USER=food`, `DB_PASSWORD=foodpass`.
+
+## Поднять только Ollama
+
+```powershell
+docker compose up -d ollama
+docker compose exec ollama ollama list
+```
 
 ## Долгоживущий контейнер приложения (`food_helper`)
 
@@ -241,8 +278,9 @@ docker network inspect food_helper_default
 
 1. `.env` с `HF_TOKEN` (по желанию; полезно при скачивании модели во время build).
 2. `docker compose build api embed`
-3. `docker compose up -d db`
-4. При необходимости: `docker compose --profile load run --rm loader`
-5. `docker compose --profile embed run --rm embed python scripts/embedding/embed_recipes.py --from-db --only-missing`
-6. `docker compose --profile embed up -d embed` — дальше работа через `docker compose exec embed ...` (в т.ч. pytest — см. раздел «Тесты (pytest)» ниже).
-7. Остановка: `docker compose --profile embed down` (и при необходимости `docker compose down` для `db`, если `embed` уже снят).
+3. `docker compose up -d db ollama api`
+4. `docker compose exec ollama ollama pull qwen3:4b`
+5. При необходимости: `docker compose --profile load run --rm loader`
+6. При необходимости: `docker compose --profile embed run --rm embed python scripts/embedding/embed_recipes.py --from-db --only-missing`
+7. `docker compose --profile embed up -d embed` — дальше работа через `docker compose exec embed ...` (в т.ч. pytest — см. раздел «Тесты (pytest)» ниже).
+8. Остановка: `docker compose --profile embed down` (и при необходимости `docker compose down` для `db/ollama/api`, если `embed` уже снят).

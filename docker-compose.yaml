@@ -18,6 +18,15 @@ services:
       retries: 30
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: food_helper_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
   loader:
     profiles: ["load"]
     build:
@@ -83,14 +92,26 @@ services:
       EMBED_MODEL_PATH: /opt/models/intfloat-multilingual-e5-small
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
+      LLM_ENABLED: "true"
+      LLM_PROVIDER: ollama
+      LLM_MODEL: qwen3:4b
+      LLM_BASE_URL: http://ollama:11434
+      LLM_TIMEOUT_SECONDS: "90"
+      LLM_TEMPERATURE: "0.2"
+      LLM_MAX_TOKENS: "500"
+      LLM_NUM_CTX: "4096"
+      LLM_THINK: "false"
     volumes:
       - .:/app
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_started
     ports:
       - "8000:8000"
     restart: unless-stopped
 
 volumes:
   pgdata:
+  ollama_data:

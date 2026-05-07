@@ -18,6 +18,15 @@ class Settings:
     default_top_k: int
     max_message_chars: int
     eager_load_embedding_model: bool
+    llm_enabled: bool
+    llm_provider: str
+    llm_model: str
+    llm_base_url: str
+    llm_timeout_seconds: float
+    llm_temperature: float
+    llm_max_tokens: int
+    llm_num_ctx: int
+    llm_think: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -36,4 +45,13 @@ class Settings:
             max_message_chars=int(os.getenv("MAX_MESSAGE_CHARS", "1000")),
             eager_load_embedding_model=os.getenv("EAGER_LOAD_EMBEDDING_MODEL", "false").lower()
             == "true",
+            llm_enabled=os.getenv("LLM_ENABLED", "false").lower() == "true",
+            llm_provider=os.getenv("LLM_PROVIDER", "none"),
+            llm_model=os.getenv("LLM_MODEL", "qwen3:4b"),
+            llm_base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434"),
+            llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
+            llm_temperature=float(os.getenv("LLM_TEMPERATURE", "0.2")),
+            llm_max_tokens=int(os.getenv("LLM_MAX_TOKENS", "500")),
+            llm_num_ctx=int(os.getenv("LLM_NUM_CTX", "4096")),
+            llm_think=os.getenv("LLM_THINK", "false").lower() == "true",
         )
