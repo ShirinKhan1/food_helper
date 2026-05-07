@@ -1,0 +1,5 @@
+{"message":"Найди легкий ужин с курицей без грибов","expected_intent_any":["search_recipes","recommend_recipes"],"must_use_llm_when_available":true,"must_not_hallucinate_recipe":true,"must_keep_recipe_order":true}
+{"message":"Найди рецепт без молока","expected_route":"hybrid_search","must_not_include_excluded_ingredient":"молоко"}
+{"message":"У меня аллергия на яйцо, что подойдет?","expected_intent_any":["allergy_or_exclusion","search_recipes"],"must_include_allergy_warning":true,"must_not_say_medically_safe":true}
+{"message":"Сколько калорий и белка в рецепте с курицей?","expected_intent":"nutrition_question","must_not_recalculate_nutrition":true,"must_include_units":true}
+{"message":"Чем заменить молоко?","expected_intent":"general_substitution","must_say_general_not_recipe_bound":true}

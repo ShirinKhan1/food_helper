@@ -68,6 +68,11 @@ class InMemoryConversationStateService:
             return None
         return snapshot.selected_recipe_id
 
+    def get_recent_messages(self, conversation_id: str, *, limit: int = 6) -> list[tuple[str, str]]:
+        collected = [(cid, role, content) for cid, role, content in self.messages if cid == conversation_id]
+        collected = collected[-limit:]
+        return [(role, content) for _, role, content in collected]
+
 
 DATASET = {
     1: {
@@ -168,6 +173,34 @@ DATASET = {
         "ingredients": [{"name": "Огурец"}, {"name": "Помидор"}],
         "steps": [{"position": 1, "text": "Нарежьте овощи"}],
     },
+    8: {
+        "id": 8,
+        "title": "Шоколадный напиток с бананом",
+        "description": "Сладкий напиток на основе какао и банана.",
+        "calories_kcal": 91.0,
+        "protein_g": 2.9,
+        "fat_g": 2.9,
+        "carbs_g": 13.1,
+        "servings": 1,
+        "recipe_url": "https://example.com/choco-drink-banana",
+        "properties": {"Время на кухне": "20 минут", "Сложность": "2 из 5"},
+        "ingredients": [{"name": "Банан"}, {"name": "Какао"}],
+        "steps": [{"position": 1, "text": "Смешайте ингредиенты в блендере"}],
+    },
+    9: {
+        "id": 9,
+        "title": "Шоколадный смузи",
+        "description": "Быстрый шоколадный напиток.",
+        "calories_kcal": 105.0,
+        "protein_g": 3.2,
+        "fat_g": 3.8,
+        "carbs_g": 14.8,
+        "servings": 1,
+        "recipe_url": "https://example.com/choco-smoothie",
+        "properties": {"Время на кухне": "10 минут", "Сложность": "1 из 5"},
+        "ingredients": [{"name": "Какао"}, {"name": "Овсяное молоко"}],
+        "steps": [{"position": 1, "text": "Взбейте все до однородности"}],
+    },
 }
 
 
@@ -177,6 +210,11 @@ class InMemoryRecipeRepository:
 
     def get_recipe_row_by_id(self, recipe_id: int):
         return DATASET.get(recipe_id)
+
+    def get_recipe_rows_by_ids(self, recipe_ids: list[int]) -> list[dict]:
+        rows = [DATASET[recipe_id] for recipe_id in recipe_ids if recipe_id in DATASET]
+        by_id = {int(row["id"]): row for row in rows}
+        return [by_id[recipe_id] for recipe_id in recipe_ids if recipe_id in by_id]
 
     def search_recipe_rows_by_text(self, query: str, *, limit: int = 5):
         lowered = query.lower()
@@ -226,6 +264,9 @@ class InMemorySearchService:
         elif "яблоч" in lowered:
             rows = [DATASET[3]]
             normalized_query = "яблочный пирог"
+        elif "шоколад" in lowered:
+            rows = [DATASET[8], DATASET[9], DATASET[3]]
+            normalized_query = "шоколад"
         else:
             rows = []
             normalized_query = lowered
@@ -284,6 +325,12 @@ def build_pipeline(state_service: InMemoryConversationStateService) -> ChatPipel
         max_tokens=settings.llm_max_tokens,
         num_ctx=settings.llm_num_ctx,
         think=settings.llm_think,
+        llm_enabled=settings.llm_enabled,
+        answer_mode=settings.answer_mode,
+        llm_postcheck_enabled=settings.llm_postcheck_enabled,
+        llm_strict_context=settings.llm_strict_context,
+        llm_max_answer_chars=settings.llm_max_answer_chars,
+        llm_strip_think_tags=settings.llm_strip_think_tags,
     )
     return ChatPipeline(
         settings=settings,
@@ -464,3 +511,61 @@ def test_scenario_8_similar_without_chicken() -> None:
     assert all("кур" not in recipe.title.lower() for recipe in response.recipes)
     assert state.get_snapshot("c8").selected_recipe_id == 6
     assert all(recipe.recipe_id != 6 for recipe in response.recipes)
+
+
+def test_conversation_recall_returns_recent_user_messages() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    first = pipeline.handle_chat(
+        ChatRequest(
+            conversation_id="c-recall",
+            message="Какие завтраки можно приготовить с яйцом без молока?",
+        )
+    )
+    assert first.recipes
+
+    response = pipeline.handle_chat(
+        ChatRequest(
+            conversation_id="c-recall",
+            message="А что мы с тобой искали ранее?",
+        )
+    )
+
+    assert response.intent == "conversation_recall"
+    assert response.route == "conversation_history"
+    assert "завтраки" in response.answer.lower()
+
+
+def test_recipe_details_followup_prefers_recent_results_by_title() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    search_response = pipeline.handle_chat(
+        ChatRequest(conversation_id="c-details-followup", message="Какие есть рецепты с шоколадом?")
+    )
+    assert search_response.recipes
+
+    response = pipeline.handle_chat(
+        ChatRequest(
+            conversation_id="c-details-followup",
+            message="Расскажи подробнее про шоколадный напиток",
+        )
+    )
+
+    assert response.intent == "recipe_details"
+    assert response.selected_recipe is not None
+    assert "шоколадный напиток" in response.selected_recipe.title.lower()
+
+
+def test_recipe_details_by_title_without_context_uses_global_candidates() -> None:
+    state = InMemoryConversationStateService()
+    pipeline = build_pipeline(state)
+
+    response = pipeline.handle_chat(
+        ChatRequest(conversation_id="c-details-global", message="Расскажи подробнее про шоколадный")
+    )
+
+    assert response.intent == "recipe_details"
+    assert response.selected_recipe is None
+    assert response.recipes

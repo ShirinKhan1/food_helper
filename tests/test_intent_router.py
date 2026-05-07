@@ -62,3 +62,10 @@ def test_route_recipe_details() -> None:
     decision = IntentRouter().decide("Покажи второй рецепт")
     assert decision.intent == "recipe_details"
     assert decision.route == "conversation_recipe_fetch"
+
+
+def test_route_recipe_details_by_title_followup() -> None:
+    decision = IntentRouter().decide("Расскажи подробнее про шоколадный напиток")
+    assert decision.intent == "recipe_details"
+    assert decision.route == "conversation_recipe_fetch"
+    assert decision.entities["recipe_title_query"] == "шоколадный напиток"

@@ -124,3 +124,19 @@ class ConversationStateService:
         if ref_type == "selected":
             return snapshot.selected_recipe_id
         return None
+
+    def get_recent_messages(self, conversation_id: str, *, limit: int = 6) -> list[tuple[str, str]]:
+        with self._db.connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT role, content
+                    FROM chat_messages
+                    WHERE conversation_id = %s::uuid
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (conversation_id, limit),
+                )
+                rows = cur.fetchall() or []
+        return [(str(row.get("role") or ""), str(row.get("content") or "")) for row in reversed(rows)]

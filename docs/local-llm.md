@@ -87,6 +87,11 @@ curl http://localhost:11434/api/generate -d "{
 | `LLM_MAX_TOKENS` | Ограничение длины ответа (`num_predict`) | `500` |
 | `LLM_NUM_CTX` | Размер контекста (`num_ctx`) | `4096` |
 | `LLM_THINK` | Режим «размышления» модели (`think`) | `false` |
+| `ANSWER_MODE` | Режим генерации: `template` / `llm` / `auto` | `auto` |
+| `LLM_POSTCHECK_ENABLED` | Включить post-check защиту от галлюцинаций | `true` |
+| `LLM_STRICT_CONTEXT` | Запрет на новые факты вне context | `true` |
+| `LLM_MAX_ANSWER_CHARS` | Максимальная длина ответа LLM | `2500` |
+| `LLM_STRIP_THINK_TAGS` | Удалять `<think>...</think>` из ответа | `true` |
 
 Рекомендуемый набор для локального режима:
 
@@ -100,6 +105,11 @@ LLM_TEMPERATURE=0.2
 LLM_MAX_TOKENS=500
 LLM_NUM_CTX=4096
 LLM_THINK=false
+ANSWER_MODE=auto
+LLM_POSTCHECK_ENABLED=true
+LLM_STRICT_CONTEXT=true
+LLM_MAX_ANSWER_CHARS=2500
+LLM_STRIP_THINK_TAGS=true
 ```
 
 Если `LLM_ENABLED=false` или провайдер не `ollama`, API работает как раньше: поле `answer` собирается rule-based списком рецептов.
@@ -117,6 +127,15 @@ curl -X POST http://localhost:8000/v1/chat \
 Ожидается прежний формат ответа: `answer`, `recipes`, `sources`, `warnings`, при включённом debug — отладочные поля.
 
 Если Ollama не запущена, модель не скачана или запрос к LLM завершился ошибкой, `answer` будет сформирован старым способом (без падения API с 500).
+
+При `include_debug=true` в ответе присутствует блок `debug.llm` с `used_llm` и `fallback_reason`.
+
+## Быстрые ручные проверки fallback
+
+1. Установите `ANSWER_MODE=template`, перезапустите API и отправьте `POST /v1/chat`.
+2. Проверьте, что API отвечает `200`, `answer` не пустой, а `debug.llm.fallback_reason=answer_mode_template`.
+3. Верните `ANSWER_MODE=auto`, выключите Ollama или укажите недоступный `LLM_BASE_URL`.
+4. Повторите запрос и убедитесь, что endpoint не падает, а `answer` пришел из fallback.
 
 ## Docker и доступ к Ollama на хосте
 

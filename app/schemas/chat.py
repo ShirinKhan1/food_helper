@@ -29,6 +29,7 @@ class IntentDecision(BaseModel):
         "recipe_details",
         "similar_recipes",
         "allergy_or_exclusion",
+        "conversation_recall",
         "fallback",
     ]
     route: Literal[
@@ -37,6 +38,7 @@ class IntentDecision(BaseModel):
         "vector_search",
         "hybrid_search",
         "conversation_recipe_fetch",
+        "conversation_history",
         "substitution",
         "substitution_catalog",
     ]
@@ -55,6 +57,7 @@ class ChatDebugInfo(BaseModel):
     vector_results: list[dict] = Field(default_factory=list)
     keyword_results: list[dict] = Field(default_factory=list)
     final_results: list[dict] = Field(default_factory=list)
+    llm: dict | None = None
 
 
 class ChatResponse(BaseModel):

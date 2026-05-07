@@ -48,6 +48,12 @@ def test_pipeline_llm_disabled_matches_rule_based_answer() -> None:
         max_tokens=settings.llm_max_tokens,
         num_ctx=settings.llm_num_ctx,
         think=settings.llm_think,
+        llm_enabled=settings.llm_enabled,
+        answer_mode=settings.answer_mode,
+        llm_postcheck_enabled=settings.llm_postcheck_enabled,
+        llm_strict_context=settings.llm_strict_context,
+        llm_max_answer_chars=settings.llm_max_answer_chars,
+        llm_strip_think_tags=settings.llm_strip_think_tags,
     )
     pipeline = _make_pipeline(ag)
     response = pipeline.handle_chat(
@@ -70,6 +76,12 @@ def test_pipeline_unreachable_ollama_falls_back_without_error() -> None:
         max_tokens=settings.llm_max_tokens,
         num_ctx=settings.llm_num_ctx,
         think=settings.llm_think,
+        llm_enabled=True,
+        answer_mode="llm",
+        llm_postcheck_enabled=settings.llm_postcheck_enabled,
+        llm_strict_context=settings.llm_strict_context,
+        llm_max_answer_chars=settings.llm_max_answer_chars,
+        llm_strip_think_tags=settings.llm_strip_think_tags,
     )
     pipeline = _make_pipeline(ag)
     response = pipeline.handle_chat(

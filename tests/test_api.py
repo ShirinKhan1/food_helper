@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
 
 from app.core.db import DatabaseUnavailableError
 from app.main import create_app
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatDebugInfo, ChatRequest, ChatResponse
 from app.schemas.recipe import NutritionInfo, RecipeDetail
 from app.schemas.search import QueryConstraints
 
@@ -152,6 +152,24 @@ def test_chat_endpoint_handles_db_error() -> None:
     response = client.post("/v1/chat", json={"message": "борщ"})
     assert response.status_code == 503
     assert "Database is unavailable" in response.json()["detail"]
+
+
+def test_chat_endpoint_include_debug_contains_llm_block() -> None:
+    response_payload = ChatResponse(
+        conversation_id="conv-debug",
+        answer="ok",
+        intent="search_recipes",
+        route="hybrid_search",
+        recipes=[],
+        warnings=[],
+        sources=[],
+        debug=ChatDebugInfo(llm={"used_llm": False, "fallback_reason": "answer_mode_template"}),
+    )
+    client = TestClient(create_app(services=_services(chat_pipeline=FakeChatPipeline(response=response_payload))))
+    response = client.post("/v1/chat", json={"message": "борщ", "options": {"include_debug": True}})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["debug"]["llm"]["used_llm"] is False
 
 
 def test_search_debug_endpoint() -> None:

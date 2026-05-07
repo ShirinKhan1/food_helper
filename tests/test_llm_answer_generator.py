@@ -14,8 +14,11 @@ from app.services.llm.null import NullLLMClient
 
 
 class FakeSuccessLLM:
+    def __init__(self, response: str = "LLM ответ") -> None:
+        self.response = response
+
     def generate(self, request: LLMGenerateRequest) -> str:
-        return "LLM ответ"
+        return self.response
 
 
 class FakeFailingLLM:
@@ -39,14 +42,22 @@ def test_answer_generator_returns_llm_text_on_success() -> None:
         max_tokens=500,
         num_ctx=4096,
         think=False,
+        llm_enabled=True,
+        answer_mode="auto",
+        llm_postcheck_enabled=True,
+        llm_strict_context=True,
+        llm_max_answer_chars=2500,
+        llm_strip_think_tags=True,
     )
     out = gen.generate_recipe_list_answer(
+        intent="search_recipes",
         user_message="ужин без мяса",
         fallback_answer="fallback",
         recipes=[_card()],
         warnings=[],
     )
-    assert out == "LLM ответ"
+    assert out.answer == "LLM ответ"
+    assert out.used_llm is True
 
 
 def test_answer_generator_fallback_on_llm_error() -> None:
@@ -56,14 +67,22 @@ def test_answer_generator_fallback_on_llm_error() -> None:
         max_tokens=500,
         num_ctx=4096,
         think=False,
+        llm_enabled=True,
+        answer_mode="auto",
+        llm_postcheck_enabled=True,
+        llm_strict_context=True,
+        llm_max_answer_chars=2500,
+        llm_strip_think_tags=True,
     )
     out = gen.generate_recipe_list_answer(
+        intent="search_recipes",
         user_message="ужин без мяса",
         fallback_answer="fallback-текст",
         recipes=[_card()],
         warnings=[],
     )
-    assert out == "fallback-текст"
+    assert out.answer == "fallback-текст"
+    assert out.fallback_reason == "llm_exception"
 
 
 def test_answer_generator_empty_recipes_no_llm_call() -> None:
@@ -73,14 +92,22 @@ def test_answer_generator_empty_recipes_no_llm_call() -> None:
         max_tokens=500,
         num_ctx=4096,
         think=False,
+        llm_enabled=True,
+        answer_mode="auto",
+        llm_postcheck_enabled=True,
+        llm_strict_context=True,
+        llm_max_answer_chars=2500,
+        llm_strip_think_tags=True,
     )
     out = gen.generate_recipe_list_answer(
+        intent="search_recipes",
         user_message="x",
         fallback_answer="пусто",
         recipes=[],
         warnings=[],
     )
-    assert out == "пусто"
+    assert out.answer == "пусто"
+    assert out.fallback_reason == "no_context"
 
 
 def test_answer_generator_null_client_returns_fallback() -> None:
@@ -90,11 +117,44 @@ def test_answer_generator_null_client_returns_fallback() -> None:
         max_tokens=500,
         num_ctx=4096,
         think=False,
+        llm_enabled=True,
+        answer_mode="auto",
+        llm_postcheck_enabled=True,
+        llm_strict_context=True,
+        llm_max_answer_chars=2500,
+        llm_strip_think_tags=True,
     )
     out = gen.generate_recipe_list_answer(
+        intent="search_recipes",
         user_message="x",
         fallback_answer="rule-based",
         recipes=[_card()],
         warnings=[],
     )
-    assert out == "rule-based"
+    assert out.answer == "rule-based"
+    assert out.fallback_reason == "llm_client_null"
+
+
+def test_answer_generator_rejects_hallucinated_title() -> None:
+    gen = AnswerGenerator(
+        llm_client=FakeSuccessLLM("1. Несуществующий рецепт"),
+        temperature=0.2,
+        max_tokens=500,
+        num_ctx=4096,
+        think=False,
+        llm_enabled=True,
+        answer_mode="auto",
+        llm_postcheck_enabled=True,
+        llm_strict_context=True,
+        llm_max_answer_chars=2500,
+        llm_strip_think_tags=True,
+    )
+    out = gen.generate_recipe_list_answer(
+        intent="search_recipes",
+        user_message="x",
+        fallback_answer="rule-based",
+        recipes=[_card()],
+        warnings=[],
+    )
+    assert out.answer == "rule-based"
+    assert out.fallback_reason == "postcheck_hallucinated_recipe"

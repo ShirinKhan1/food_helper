@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from app.core.config import Settings
 from app.orchestrator.intent_router import IntentRouter
@@ -10,6 +11,7 @@ from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceIn
 from app.schemas.search import QueryConstraints
 from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationStateService
+from app.services.llm.result import AnswerGenerationResult
 from app.services.nutrition import NutritionService
 from app.services.recipe_repository import RecipeRepository
 from app.services.search_service import SearchService
@@ -103,15 +105,18 @@ class ChatPipeline:
                 selected_recipe_id=None,
             )
             fallback_answer = self._render_recipe_list_answer(decision.intent, recipes)
-            answer = self._answer_generator.generate_recipe_list_answer(
+            llm_result = self._answer_generator.generate_recipe_list_answer(
+                intent=decision.intent,
                 user_message=message,
                 fallback_answer=fallback_answer,
                 recipes=recipes,
                 warnings=warnings,
+                constraints=constraints,
+                sources=self._sources_from_cards(recipes),
             )
             return ChatResponse(
                 conversation_id=conversation_id,
-                answer=answer,
+                answer=llm_result.answer,
                 intent=decision.intent,
                 route=decision.route,
                 recipes=recipes,
@@ -122,6 +127,7 @@ class ChatPipeline:
                     constraints=constraints,
                     decision=decision,
                     execution=execution,
+                    llm_result=llm_result,
                 ),
             )
 
@@ -140,13 +146,21 @@ class ChatPipeline:
                         last_recipe_results=[card.recipe_id for card in recipes],
                         selected_recipe_id=None,
                     )
-                    answer = self._render_nutrition_candidate_answer(
+                    fallback_answer = self._render_nutrition_candidate_answer(
                         recipes,
                         nutrients=decision.entities.get("nutrients") or [decision.entities.get("nutrient")],
                     )
+                    llm_result = self._answer_generator.generate_nutrition_candidates_answer(
+                        intent=decision.intent,
+                        user_message=message,
+                        fallback_answer=fallback_answer,
+                        recipes=recipes,
+                        warnings=warnings,
+                        sources=self._sources_from_cards(recipes),
+                    )
                     return ChatResponse(
                         conversation_id=conversation_id,
-                        answer=answer,
+                        answer=llm_result.answer,
                         intent=decision.intent,
                         route="hybrid_search",
                         recipes=recipes,
@@ -157,6 +171,7 @@ class ChatPipeline:
                             constraints=constraints,
                             decision=decision,
                             execution=execution,
+                            llm_result=llm_result,
                         ),
                     )
                 return self._response_for_missing_recipe(
@@ -169,21 +184,34 @@ class ChatPipeline:
             detail = self._recipe_repository.row_to_recipe_detail(resolved.row)
             nutrient = decision.entities.get("nutrient")
             nutrition = self._nutrition_service.get_nutrition(detail.recipe_id) or detail.nutrition
-            answer = self._nutrition_service.format_answer(detail.title, nutrition, nutrient)
+            fallback_answer = self._nutrition_service.format_answer(detail.title, nutrition, nutrient)
+            llm_result = self._answer_generator.generate_nutrition_answer(
+                user_message=message,
+                fallback_answer=fallback_answer,
+                nutrition=nutrition,
+                detail=detail,
+                warnings=warnings,
+                sources=[self._source_from_detail(detail)],
+            )
             self._conversation_state_service.update_snapshot(
                 conversation_id,
                 selected_recipe_id=detail.recipe_id,
             )
             return ChatResponse(
                 conversation_id=conversation_id,
-                answer=answer,
+                answer=llm_result.answer,
                 intent=decision.intent,
                 route=decision.route,
                 selected_recipe=detail,
                 nutrition=nutrition,
                 warnings=warnings,
                 sources=[self._source_from_detail(detail)],
-                debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+                debug=self._build_debug(
+                    options=options,
+                    constraints=constraints,
+                    decision=decision,
+                    llm_result=llm_result,
+                ),
             )
 
         if decision.intent == "recipe_details":
@@ -201,30 +229,54 @@ class ChatPipeline:
                 conversation_id,
                 selected_recipe_id=detail.recipe_id,
             )
+            fallback_answer = self._render_recipe_detail_answer(message, detail)
+            llm_result = self._answer_generator.generate_recipe_detail_answer(
+                user_message=message,
+                fallback_answer=fallback_answer,
+                detail=detail,
+                warnings=warnings,
+                sources=[self._source_from_detail(detail)],
+            )
             return ChatResponse(
                 conversation_id=conversation_id,
-                answer=self._render_recipe_detail_answer(message, detail),
+                answer=llm_result.answer,
                 intent=decision.intent,
                 route=decision.route,
                 selected_recipe=detail,
                 warnings=warnings,
                 sources=[self._source_from_detail(detail)],
-                debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+                debug=self._build_debug(
+                    options=options,
+                    constraints=constraints,
+                    decision=decision,
+                    llm_result=llm_result,
+                ),
             )
 
         if decision.intent == "general_substitution":
             target = str(decision.entities.get("target_ingredient") or "ингредиент")
             substitution = self._substitution_service.suggest_general(target)
             warnings = [*warnings, *substitution.warnings]
-            answer = self._render_general_substitutions_answer(target, substitution.options)
+            fallback_answer = self._render_general_substitutions_answer(target, substitution.options)
+            llm_result = self._answer_generator.generate_general_substitution_answer(
+                user_message=message,
+                fallback_answer=fallback_answer,
+                substitutions=substitution.options,
+                warnings=warnings,
+            )
             return ChatResponse(
                 conversation_id=conversation_id,
-                answer=answer,
+                answer=llm_result.answer,
                 intent=decision.intent,
                 route=decision.route,
                 substitutions=substitution.options,
                 warnings=warnings,
-                debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+                debug=self._build_debug(
+                    options=options,
+                    constraints=constraints,
+                    decision=decision,
+                    llm_result=llm_result,
+                ),
             )
 
         if decision.intent == "ingredient_substitution":
@@ -259,26 +311,40 @@ class ChatPipeline:
             substitution = self._substitution_service.suggest(detail, str(target))
             warnings = [*warnings, *substitution.warnings]
             if not substitution.found_in_recipe:
-                answer = (
+                fallback_answer = (
                     f'В рецепте "{detail.title}" я не нашел ингредиент "{target}". '
                     "Проверьте формулировку или выберите другой рецепт."
                 )
             elif substitution.options:
-                answer = self._render_substitutions_answer(detail.title, str(target), substitution.options)
+                fallback_answer = self._render_substitutions_answer(
+                    detail.title, str(target), substitution.options
+                )
             else:
-                answer = (
+                fallback_answer = (
                     f'Для ингредиента "{target}" в рецепте "{detail.title}" пока нет готовых замен.'
                 )
+            llm_result = self._answer_generator.generate_substitution_answer(
+                user_message=message,
+                fallback_answer=fallback_answer,
+                detail=detail,
+                substitutions=substitution.options,
+                warnings=warnings,
+            )
             return ChatResponse(
                 conversation_id=conversation_id,
-                answer=answer,
+                answer=llm_result.answer,
                 intent=decision.intent,
                 route=decision.route,
                 selected_recipe=detail,
                 substitutions=substitution.options,
                 warnings=warnings,
                 sources=[self._source_from_detail(detail)],
-                debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+                debug=self._build_debug(
+                    options=options,
+                    constraints=constraints,
+                    decision=decision,
+                    llm_result=llm_result,
+                ),
             )
 
         if decision.intent == "similar_recipes":
@@ -314,15 +380,18 @@ class ChatPipeline:
             fallback_answer = self._render_similar_answer(
                 base_row.get("title") or "выбранного рецепта", recipes
             )
-            answer = self._answer_generator.generate_recipe_list_answer(
+            llm_result = self._answer_generator.generate_recipe_list_answer(
+                intent=decision.intent,
                 user_message=message,
                 fallback_answer=fallback_answer,
                 recipes=recipes,
                 warnings=warnings,
+                constraints=constraints,
+                sources=self._sources_from_cards(recipes),
             )
             return ChatResponse(
                 conversation_id=conversation_id,
-                answer=answer,
+                answer=llm_result.answer,
                 intent=decision.intent,
                 route=decision.route,
                 recipes=recipes,
@@ -333,17 +402,48 @@ class ChatPipeline:
                     constraints=constraints,
                     decision=decision,
                     execution=execution,
+                    llm_result=llm_result,
                 ),
             )
 
+        if decision.intent == "conversation_recall":
+            recent_messages = self._conversation_state_service.get_recent_messages(conversation_id, limit=6)
+            answer = self._render_conversation_recall_answer(recent_messages)
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                intent=decision.intent,
+                route=decision.route,
+                warnings=warnings,
+                sources=[],
+                debug=self._build_debug(
+                    options=options,
+                    constraints=constraints,
+                    decision=decision,
+                ),
+            )
+
+        default_fallback = "Я могу помочь найти рецепт, показать детали, БЖУ или варианты замены ингредиента."
+        llm_result = None
+        if options.include_debug:
+            llm_result = self._answer_generator.generate_missing_context_answer(
+                user_message=message,
+                fallback_answer=default_fallback,
+                warnings=warnings,
+            )
         return ChatResponse(
             conversation_id=conversation_id,
-            answer="Я могу помочь найти рецепт, показать детали, БЖУ или варианты замены ингредиента.",
+            answer=default_fallback,
             intent=decision.intent,
             route=decision.route,
             warnings=warnings,
             sources=[],
-            debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+            debug=self._build_debug(
+                options=options,
+                constraints=constraints,
+                decision=decision,
+                llm_result=llm_result,
+            ),
         )
 
     def _resolve_recipe(self, conversation_id: str, decision: IntentDecision) -> ResolvedRecipe:
@@ -355,12 +455,46 @@ class ChatPipeline:
 
         title_query = decision.entities.get("recipe_title_query")
         if title_query:
+            contextual_candidates = self._find_title_in_recent_results(
+                conversation_id=conversation_id,
+                title_query=str(title_query),
+            )
+            if len(contextual_candidates) == 1:
+                return ResolvedRecipe(row=contextual_candidates[0], candidates=[])
+            if contextual_candidates:
+                return ResolvedRecipe(row=None, candidates=contextual_candidates)
+
             candidates = self._recipe_repository.search_recipe_rows_by_text(str(title_query), limit=3)
             if len(candidates) == 1:
                 return ResolvedRecipe(row=candidates[0], candidates=[])
             return ResolvedRecipe(row=None, candidates=candidates)
 
         return ResolvedRecipe(row=None, candidates=[])
+
+    def _find_title_in_recent_results(self, *, conversation_id: str, title_query: str) -> list[dict]:
+        snapshot = self._conversation_state_service.get_snapshot(conversation_id)
+        if not snapshot.last_recipe_results:
+            return []
+
+        rows = self._recipe_repository.get_recipe_rows_by_ids(snapshot.last_recipe_results)
+        query_tokens = self._normalized_tokens(title_query)
+        if not query_tokens:
+            return []
+
+        matched_rows: list[dict] = []
+        for row in rows:
+            title = str(row.get("title") or "")
+            title_tokens = self._normalized_tokens(title)
+            if query_tokens.issubset(title_tokens):
+                matched_rows.append(row)
+        return matched_rows[:3]
+
+    def _normalized_tokens(self, value: str) -> set[str]:
+        return {
+            token
+            for token in re.split(r"[^а-яёa-z0-9]+", value.lower())
+            if len(token) >= 3
+        }
 
     def _should_search_candidates_for_nutrition(
         self,
@@ -526,6 +660,18 @@ class ChatPipeline:
         body = "\n".join(f"{card.rank}. {card.title}" for card in recipes)
         return f'Вот похожие варианты для "{base_title}":\n{body}'
 
+    def _render_conversation_recall_answer(self, messages: list[tuple[str, str]]) -> str:
+        user_messages = [content.strip() for role, content in messages if role == "user" and content.strip()]
+        if not user_messages:
+            return "Пока в этом диалоге нет предыдущих пользовательских запросов."
+
+        recent = user_messages[-3:]
+        if len(recent) == 1:
+            return f"Ранее в этом диалоге вы спрашивали: {recent[0]}"
+
+        rendered = "\n".join(f"- {item}" for item in recent)
+        return f"Вот что вы спрашивали ранее в этом диалоге:\n{rendered}"
+
     def _build_debug(
         self,
         *,
@@ -533,6 +679,7 @@ class ChatPipeline:
         constraints: QueryConstraints,
         decision: IntentDecision,
         execution=None,
+        llm_result: AnswerGenerationResult | None = None,
     ) -> ChatDebugInfo | None:
         if not options.include_debug:
             return None
@@ -543,7 +690,19 @@ class ChatPipeline:
             vector_results=self._simplify_rows(getattr(execution, "vector_results", [])),
             keyword_results=self._simplify_rows(getattr(execution, "keyword_results", [])),
             final_results=self._simplify_rows(getattr(execution, "final_results", [])),
+            llm=self._build_llm_debug(llm_result),
         )
+
+    def _build_llm_debug(self, llm_result: AnswerGenerationResult | None) -> dict | None:
+        if llm_result is None:
+            return None
+        return {
+            "used_llm": llm_result.used_llm,
+            "fallback_reason": llm_result.fallback_reason,
+            "latency_ms": llm_result.latency_ms,
+            "postcheck_passed": llm_result.postcheck_passed,
+            "postcheck_errors": llm_result.postcheck_errors,
+        }
 
     def _simplify_rows(self, rows: list[dict]) -> list[dict]:
         out: list[dict] = []

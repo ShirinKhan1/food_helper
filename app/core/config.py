@@ -27,11 +27,25 @@ class Settings:
     llm_max_tokens: int
     llm_num_ctx: int
     llm_think: bool
+    answer_mode: str
+    llm_postcheck_enabled: bool
+    llm_strict_context: bool
+    llm_log_prompts: bool
+    llm_log_responses: bool
+    llm_min_recipes_for_list_answer: int
+    llm_max_context_recipes: int
+    llm_max_context_ingredients: int
+    llm_max_context_steps: int
+    llm_max_answer_chars: int
+    llm_strip_think_tags: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
         explicit_dsn = os.getenv("APP_PG_DSN")
         db_dsn = resolve_pg_dsn(explicit_dsn)
+        answer_mode = os.getenv("ANSWER_MODE", "auto")
+        if answer_mode not in {"template", "llm", "auto"}:
+            raise ValueError("ANSWER_MODE must be one of: template, llm, auto")
         return cls(
             app_name=os.getenv("APP_NAME", "Food Helper API"),
             db_dsn=db_dsn,
@@ -54,4 +68,19 @@ class Settings:
             llm_max_tokens=int(os.getenv("LLM_MAX_TOKENS", "500")),
             llm_num_ctx=int(os.getenv("LLM_NUM_CTX", "4096")),
             llm_think=os.getenv("LLM_THINK", "false").lower() == "true",
+            answer_mode=answer_mode,
+            llm_postcheck_enabled=os.getenv("LLM_POSTCHECK_ENABLED", "true").lower() == "true",
+            llm_strict_context=os.getenv("LLM_STRICT_CONTEXT", "true").lower() == "true",
+            llm_log_prompts=os.getenv("LLM_LOG_PROMPTS", "false").lower() == "true",
+            llm_log_responses=os.getenv("LLM_LOG_RESPONSES", "false").lower() == "true",
+            llm_min_recipes_for_list_answer=int(
+                os.getenv("LLM_MIN_RECIPES_FOR_LIST_ANSWER", "1")
+            ),
+            llm_max_context_recipes=int(os.getenv("LLM_MAX_CONTEXT_RECIPES", "5")),
+            llm_max_context_ingredients=int(
+                os.getenv("LLM_MAX_CONTEXT_INGREDIENTS", "30")
+            ),
+            llm_max_context_steps=int(os.getenv("LLM_MAX_CONTEXT_STEPS", "20")),
+            llm_max_answer_chars=int(os.getenv("LLM_MAX_ANSWER_CHARS", "2500")),
+            llm_strip_think_tags=os.getenv("LLM_STRIP_THINK_TAGS", "true").lower() == "true",
         )

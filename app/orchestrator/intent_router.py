@@ -22,11 +22,15 @@ _NUTRITION_TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 _DETAILS_TITLE_RE = re.compile(
-    r"(?:покажи|покажи|какие ингредиенты нужны для|как готовить)\s+(.+?)[?.!]?$",
+    r"(?:покажи|какие ингредиенты нужны для|как готовить|расскажи подробнее про|подробнее про|что за рецепт)\s+(.+?)[?.!]?$",
     re.IGNORECASE,
 )
 _SUBSTITUTION_RE = re.compile(
     r"(?:чем\s+заменить|на\s+что\s+(?:можно\s+)?заменить|заменить|замен[ау]\s+для|вместо)\s+([а-яёa-z0-9\-%\s]+?)(?=(?:\s+(?:в|для|на)\b|[?.!,]|$))",
+    re.IGNORECASE,
+)
+_CONVERSATION_RECALL_RE = re.compile(
+    r"(что\s+мы\s+(?:с\s+тобой\s+)?(?:искали|обсуждали)|о\s+ч[её]м\s+мы\s+говорили|напомни\s+контекст)",
     re.IGNORECASE,
 )
 
@@ -83,7 +87,10 @@ def _extract_recipe_title_query(message: str, *, nutrient: str | None) -> str | 
         if match:
             return match.group(1).strip()
 
-    if any(word in lowered for word in ["покажи", "ингредиент", "как готовить"]):
+    if any(
+        word in lowered
+        for word in ["покажи", "ингредиент", "как готовить", "подробнее про", "расскажи подробнее", "что за рецепт"]
+    ):
         match = _DETAILS_TITLE_RE.search(lowered)
         if match:
             return match.group(1).strip()
@@ -109,6 +116,18 @@ class IntentRouter:
             "include_ingredients": constraints.include_ingredients,
             "exclude_ingredients": constraints.exclude_ingredients,
         }
+
+        if _CONVERSATION_RECALL_RE.search(lowered):
+            return IntentDecision(
+                intent="conversation_recall",
+                route="conversation_history",
+                entities=entities,
+                needs_conversation_context=True,
+                needs_recipe_fetch=False,
+                needs_vector_search=False,
+                needs_sql=True,
+                needs_llm=False,
+            )
 
         if any(token in lowered for token in ["похож", "альтернатив", "аналог"]):
             return IntentDecision(
@@ -157,8 +176,17 @@ class IntentRouter:
                 needs_llm=False,
             )
 
-        if recipe_reference and any(
-            token in lowered for token in ["покажи", "ингредиент", "шаг", "готовить", "рецепт"]
+        if (recipe_reference or recipe_title_query) and any(
+            token in lowered
+            for token in [
+                "покажи",
+                "ингредиент",
+                "шаг",
+                "готовить",
+                "рецепт",
+                "подробнее",
+                "расскажи",
+            ]
         ):
             return IntentDecision(
                 intent="recipe_details",
