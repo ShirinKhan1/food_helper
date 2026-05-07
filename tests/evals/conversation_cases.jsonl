@@ -26,6 +26,6 @@
 {"id":"similar_002","category":"similar_recipes","message":"Покажи похожие рецепты","expected_intent":"similar_recipes","expected_route":"vector_search"}
 {"id":"similar_003","category":"similar_recipes","message":"Найди альтернативу этому рецепту без молока","expected_intent":"similar_recipes","expected_route":"vector_search","expected_exclude":["молоко"]}
 {"id":"ambiguity_001","category":"ambiguity","message":"Сколько калорий в борще?","expected_intent":"nutrition_question","expected_route":"sql"}
-{"id":"ambiguity_002","category":"ambiguity","message":"Покажи рецепт яблочный пирог","expected_intent":"search_recipes","expected_route":"hybrid_search"}
+{"id":"ambiguity_002","category":"ambiguity","message":"Покажи рецепт яблочный пирог","expected_intent":"recipe_details","expected_route":"conversation_recipe_fetch"}
 {"id":"fallback_001","category":"fallback","message":"Привет, что ты умеешь?","expected_intent":"fallback","expected_route":"no_retrieval"}
 {"id":"fallback_002","category":"fallback","message":"Расскажи смешной анекдот","expected_intent":"fallback","expected_route":"no_retrieval"}
