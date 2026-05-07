@@ -8,13 +8,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.core.config import Settings
+from app.orchestrator.clarification import ClarificationManager
 from app.orchestrator.intent_router import IntentRouter
+from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
 from app.orchestrator.pipeline import ChatPipeline
 from app.schemas.chat import ChatRequest
 from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationSnapshot
 from app.services.ingredient_catalog import IngredientCatalog
 from app.services.llm.null import NullLLMClient
+from app.services.llm.parser_postcheck import ParserPostcheck
+from app.services.llm.query_parser import LLMQueryParser
 from app.services.substitution import SubstitutionService
 from tests.evals.test_rag_scenarios import (
     InMemoryConversationStateService,
@@ -64,6 +68,10 @@ def _chat_pipeline(
 ) -> ChatPipeline:
     settings = Settings.from_env()
     conv = conversation_state or InMemoryConversationStateService()
+    parser_postcheck = ParserPostcheck(max_question_chars=settings.clarification_max_question_chars)
+    query_parser = LLMQueryParser(settings=settings, llm_client=None, postcheck=parser_postcheck)
+    parsed_request_adapter = ParsedRequestAdapter(settings=settings)
+    clarification_manager = ClarificationManager()
     return ChatPipeline(
         settings=settings,
         router=IntentRouter(),
@@ -74,6 +82,9 @@ def _chat_pipeline(
         substitution_service=SubstitutionService(IngredientCatalog.load()),
         conversation_state_service=conv,
         answer_generator=answer_generator,
+        query_parser=query_parser,
+        parsed_request_adapter=parsed_request_adapter,
+        clarification_manager=clarification_manager,
     )
 
 

@@ -27,6 +27,15 @@ from tests.evals.test_rag_scenarios import (
 
 def _make_pipeline(answer_generator: AnswerGenerator) -> ChatPipeline:
     settings = Settings.from_env()
+    from app.orchestrator.clarification import ClarificationManager
+    from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
+    from app.services.llm.parser_postcheck import ParserPostcheck
+    from app.services.llm.query_parser import LLMQueryParser
+
+    parser_postcheck = ParserPostcheck(max_question_chars=settings.clarification_max_question_chars)
+    query_parser = LLMQueryParser(settings=settings, llm_client=None, postcheck=parser_postcheck)
+    parsed_request_adapter = ParsedRequestAdapter(settings=settings)
+    clarification_manager = ClarificationManager()
     return ChatPipeline(
         settings=settings,
         router=IntentRouter(),
@@ -37,6 +46,9 @@ def _make_pipeline(answer_generator: AnswerGenerator) -> ChatPipeline:
         substitution_service=SubstitutionService(IngredientCatalog.load()),
         conversation_state_service=InMemoryConversationStateService(),
         answer_generator=answer_generator,
+        query_parser=query_parser,
+        parsed_request_adapter=parsed_request_adapter,
+        clarification_manager=clarification_manager,
     )
 
 

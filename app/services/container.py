@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.core.db import Database
 from app.orchestrator.intent_router import IntentRouter
+from app.orchestrator.clarification import ClarificationManager
+from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
 from app.orchestrator.pipeline import ChatPipeline
+from app.services.llm.parser_postcheck import ParserPostcheck
+from app.services.llm.query_parser import LLMQueryParser
 from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationStateService
 from app.services.embeddings import EmbeddingService
@@ -61,6 +65,24 @@ def build_services(settings: Settings | None = None) -> AppServices:
     substitution_service = SubstitutionService(ingredient_catalog)
     conversation_state_service = ConversationStateService(db)
     intent_router = IntentRouter()
+    parser_postcheck = ParserPostcheck(
+        max_question_chars=resolved_settings.clarification_max_question_chars,
+    )
+    if resolved_settings.llm_query_parser_enabled and resolved_settings.llm_query_parser_provider == "ollama":
+        parser_llm_client = OllamaLLMClient(
+            base_url=resolved_settings.llm_base_url,
+            model=resolved_settings.llm_query_parser_model,
+            timeout_seconds=resolved_settings.llm_query_parser_timeout_seconds,
+        )
+    else:
+        parser_llm_client = None
+    query_parser = LLMQueryParser(
+        settings=resolved_settings,
+        llm_client=parser_llm_client,
+        postcheck=parser_postcheck,
+    )
+    parsed_request_adapter = ParsedRequestAdapter(settings=resolved_settings)
+    clarification_manager = ClarificationManager()
     if resolved_settings.llm_enabled and resolved_settings.llm_provider == "ollama":
         llm_client = OllamaLLMClient(
             base_url=resolved_settings.llm_base_url,
@@ -99,6 +121,9 @@ def build_services(settings: Settings | None = None) -> AppServices:
         substitution_service=substitution_service,
         conversation_state_service=conversation_state_service,
         answer_generator=answer_generator,
+        query_parser=query_parser,
+        parsed_request_adapter=parsed_request_adapter,
+        clarification_manager=clarification_manager,
     )
     return AppServices(
         settings=resolved_settings,

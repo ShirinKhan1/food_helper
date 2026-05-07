@@ -9,10 +9,14 @@ if str(ROOT) not in sys.path:
 
 from app.core.config import Settings
 from app.orchestrator.intent_router import IntentRouter
+from app.orchestrator.clarification import ClarificationManager
+from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
 from app.orchestrator.pipeline import ChatPipeline
 from app.schemas.chat import ChatRequest
 from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationSnapshot
+from app.services.llm.parser_postcheck import ParserPostcheck
+from app.services.llm.query_parser import LLMQueryParser
 from app.services.llm.null import NullLLMClient
 from app.services.ingredient_catalog import IngredientCatalog
 from app.services.recipe_repository import RecipeRepository
@@ -49,24 +53,38 @@ class InMemoryConversationStateService:
         conversation_id: str,
         *,
         last_recipe_results: list[int] | None = None,
-        selected_recipe_id="__unset__",
+        selected_recipe_id: object = "__unset__",
     ) -> None:
         snapshot = self.get_snapshot(conversation_id)
         if last_recipe_results is not None:
             snapshot.last_recipe_results = last_recipe_results
         if selected_recipe_id != "__unset__":
-            snapshot.selected_recipe_id = selected_recipe_id
+            snapshot.selected_recipe_id = selected_recipe_id  # type: ignore[assignment]
+
+    def get_pending_clarification(self, conversation_id: str):
+        return self.get_snapshot(conversation_id).pending_clarification
+
+    def set_pending_clarification(self, conversation_id: str, clarification) -> None:
+        snap = self.get_snapshot(conversation_id)
+        snap.pending_clarification = clarification
+
+    def clear_pending_clarification(self, conversation_id: str) -> None:
+        snap = self.get_snapshot(conversation_id)
+        snap.pending_clarification = None
 
     def resolve_reference(self, conversation_id: str, reference: dict | None) -> int | None:
         snapshot = self.get_snapshot(conversation_id)
         if not reference:
             return snapshot.selected_recipe_id
-        if reference["type"] == "rank":
+        ref_type = reference.get("type")
+        if ref_type == "rank":
             rank = int(reference["value"])
             if 1 <= rank <= len(snapshot.last_recipe_results):
                 return snapshot.last_recipe_results[rank - 1]
             return None
-        return snapshot.selected_recipe_id
+        if ref_type == "selected":
+            return snapshot.selected_recipe_id
+        return None
 
     def get_recent_messages(self, conversation_id: str, *, limit: int = 6) -> list[tuple[str, str]]:
         collected = [(cid, role, content) for cid, role, content in self.messages if cid == conversation_id]
@@ -338,6 +356,10 @@ def build_pipeline(state_service: InMemoryConversationStateService) -> ChatPipel
         llm_max_context_ingredients=settings.llm_max_context_ingredients,
         llm_max_context_steps=settings.llm_max_context_steps,
     )
+    parser_postcheck = ParserPostcheck(max_question_chars=settings.clarification_max_question_chars)
+    query_parser = LLMQueryParser(settings=settings, llm_client=None, postcheck=parser_postcheck)
+    parsed_request_adapter = ParsedRequestAdapter(settings=settings)
+    clarification_manager = ClarificationManager()
     return ChatPipeline(
         settings=settings,
         router=IntentRouter(),
@@ -348,6 +370,9 @@ def build_pipeline(state_service: InMemoryConversationStateService) -> ChatPipel
         substitution_service=SubstitutionService(IngredientCatalog.load()),
         conversation_state_service=state_service,
         answer_generator=answer_generator,
+        query_parser=query_parser,
+        parsed_request_adapter=parsed_request_adapter,
+        clarification_manager=clarification_manager,
     )
 
 

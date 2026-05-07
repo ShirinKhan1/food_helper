@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import time
 
+import httpx
+
 from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceInfo, SubstitutionOption
 from app.schemas.search import QueryConstraints
 from app.services.llm.base import LLMClient, LLMGenerateRequest
@@ -308,7 +310,7 @@ class AnswerGenerator:
                     think=self._think,
                 )
             )
-        except TimeoutError:
+        except (TimeoutError, httpx.TimeoutException):
             return AnswerGenerationResult(answer=fallback_answer, used_llm=False, fallback_reason="llm_timeout")
         except Exception as exc:
             LOGGER.warning("LLM call failed: %s", exc)

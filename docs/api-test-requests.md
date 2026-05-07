@@ -84,6 +84,39 @@ Body:
 - `conversation_id` из ответа в переменную Postman `conversation_id`.
 - `recipes[0].recipe_id` в переменную Postman `recipe_id`.
 
+## 2.1. Chat: уточняющий вопрос (clarification)
+
+Если включён LLM Query Parser и модель вернула `requires_clarification: true`, ответ будет с `intent: "clarification_required"`, `route: "clarification"` и полем `clarification` (вопрос и варианты). Сохрани тот же `conversation_id` и отправь следующее сообщение как короткий ответ на вопрос (например, «по калориям» или «в приготовлении»).
+
+Первый запрос (пример):
+
+```http
+POST {{base_url}}/v1/chat
+```
+
+```json
+{
+  "message": "Хочу что-то легкое",
+  "options": { "top_k": 5, "include_debug": true }
+}
+```
+
+Ожидаемо при срабатывании clarification: `requires_clarification: true`, в `answer` текст вопроса, в `debug.parser` метаданные парсера (без сырого prompt/ответа LLM).
+
+Второй запрос в тот же диалог:
+
+```json
+{
+  "conversation_id": "{{conversation_id}}",
+  "message": "в приготовлении",
+  "options": { "top_k": 5 }
+}
+```
+
+Ожидаемо: обычный ответ поиска/рекомендаций, `requires_clarification: false`.
+
+По умолчанию в окружении parser выключен (`QUERY_PARSER_MODE=rules`, `LLM_QUERY_PARSER_ENABLED=false`), поэтому этот сценарий появится только после явной настройки переменных (см. README).
+
 ## 3. Chat: продолжение диалога
 
 Проверяет, что приложение принимает `conversation_id` и может использовать контекст предыдущего ответа.

@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.parser import ClarificationRequest
 from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceInfo, SubstitutionOption
 from app.schemas.search import QueryConstraints
 
@@ -41,6 +42,7 @@ class IntentDecision(BaseModel):
         "conversation_history",
         "substitution",
         "substitution_catalog",
+        "clarification",
     ]
     entities: dict = Field(default_factory=dict)
     needs_conversation_context: bool = False
@@ -58,6 +60,7 @@ class ChatDebugInfo(BaseModel):
     keyword_results: list[dict] = Field(default_factory=list)
     final_results: list[dict] = Field(default_factory=list)
     llm: dict | None = None
+    parser: dict | None = None
 
 
 class ChatResponse(BaseModel):
@@ -72,3 +75,5 @@ class ChatResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     sources: list[SourceInfo] = Field(default_factory=list)
     debug: ChatDebugInfo | None = None
+    requires_clarification: bool = False
+    clarification: ClarificationRequest | None = None

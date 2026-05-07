@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import re
 
+LOGGER = logging.getLogger(__name__)
+
 from app.core.config import Settings
+from app.orchestrator.clarification import ClarificationManager, PendingClarification
 from app.orchestrator.intent_router import IntentRouter
+from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
 from app.orchestrator.query_constraints import extract_query_constraints
 from app.schemas.chat import ChatDebugInfo, ChatOptions, ChatRequest, ChatResponse, IntentDecision
+from app.schemas.parser import ClarificationRequest, ParsedUserRequest
 from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceInfo, SubstitutionOption
 from app.schemas.search import QueryConstraints
 from app.services.answer_generator import AnswerGenerator
 from app.services.conversation_state import ConversationStateService
+from app.services.llm.query_parser import LLMQueryParser
 from app.services.llm.result import AnswerGenerationResult
 from app.services.nutrition import NutritionService
 from app.services.recipe_repository import RecipeRepository
@@ -43,6 +50,9 @@ class ChatPipeline:
         substitution_service: SubstitutionService,
         conversation_state_service: ConversationStateService,
         answer_generator: AnswerGenerator,
+        query_parser: LLMQueryParser,
+        parsed_request_adapter: ParsedRequestAdapter,
+        clarification_manager: ClarificationManager,
     ) -> None:
         self._settings = settings
         self._router = router
@@ -53,6 +63,36 @@ class ChatPipeline:
         self._substitution_service = substitution_service
         self._conversation_state_service = conversation_state_service
         self._answer_generator = answer_generator
+        self._query_parser = query_parser
+        self._parsed_request_adapter = parsed_request_adapter
+        self._clarification_manager = clarification_manager
+
+    def _chat_debug_log(self, options: ChatOptions, msg: str, *args: object) -> None:
+        if options.include_debug:
+            LOGGER.info("[chat debug] " + msg, *args)
+
+    def _chat_debug_search(self, options: ChatOptions, label: str, execution: object) -> None:
+        if not options.include_debug:
+            return
+        LOGGER.info(
+            "[chat debug] %s hits final=%d vector=%d keyword=%d normalized_query=%r",
+            label,
+            len(getattr(execution, "final_results", ()) or ()),
+            len(getattr(execution, "vector_results", ()) or ()),
+            len(getattr(execution, "keyword_results", ()) or ()),
+            getattr(execution, "normalized_query", None),
+        )
+
+    def _chat_debug_llm(self, options: ChatOptions, llm_result: AnswerGenerationResult | None) -> None:
+        if not options.include_debug or llm_result is None:
+            return
+        LOGGER.info(
+            "[chat debug] answer_llm used=%s fallback=%s latency_ms=%s postcheck=%s",
+            llm_result.used_llm,
+            llm_result.fallback_reason,
+            llm_result.latency_ms,
+            llm_result.postcheck_passed,
+        )
 
     def handle_chat(self, request: ChatRequest) -> ChatResponse:
         conversation_id = self._conversation_state_service.ensure_conversation(
@@ -63,24 +103,199 @@ class ChatPipeline:
             role="user",
             content=request.message,
         )
+        self._chat_debug_log(
+            request.options,
+            "request start conv=%s client_conv=%r message_chars=%d top_k=%d",
+            conversation_id,
+            request.conversation_id,
+            len(request.message),
+            request.options.top_k,
+        )
 
-        constraints = extract_query_constraints(request.message)
-        decision = self._router.decide(request.message)
+        snapshot = self._conversation_state_service.get_snapshot(conversation_id)
+        if snapshot.pending_clarification and not self._settings.clarification_enabled:
+            self._conversation_state_service.clear_pending_clarification(conversation_id)
+            snapshot = self._conversation_state_service.get_snapshot(conversation_id)
+        recent_messages = self._conversation_state_service.get_recent_messages(
+            conversation_id,
+            limit=self._settings.query_parser_recent_messages_limit,
+        )
+
+        parser_result = None
+        pre_resolved_parsed: ParsedUserRequest | None = None
+        pending = snapshot.pending_clarification
+        if pending and self._settings.clarification_enabled:
+            resolved = self._clarification_manager.try_resolve(
+                pending=pending,
+                message=request.message,
+                snapshot=snapshot,
+            )
+            if resolved.should_repeat_question:
+                self._chat_debug_log(request.options, "branch repeat pending clarification question")
+                clar = self._pending_to_clarification_request(pending)
+                response = ChatResponse(
+                    conversation_id=conversation_id,
+                    answer=pending.question,
+                    intent="clarification_required",
+                    route="clarification",
+                    requires_clarification=True,
+                    clarification=clar,
+                    debug=self._build_debug(
+                        options=request.options,
+                        constraints=extract_query_constraints(request.message),
+                        decision=self._router.decide(request.message),
+                        parser_debug=self._parser_debug_dict(parser_result),
+                    ),
+                )
+                self._conversation_state_service.append_message(
+                    conversation_id,
+                    role="assistant",
+                    content=response.answer,
+                )
+                return response
+            if resolved.abandon_pending:
+                self._conversation_state_service.clear_pending_clarification(conversation_id)
+            if resolved.resolved and resolved.parsed is not None:
+                pre_resolved_parsed = resolved.parsed
+
+        rule_constraints = extract_query_constraints(request.message)
+        rule_decision = self._router.decide(request.message)
+
+        if pre_resolved_parsed is None:
+            parser_result = self._query_parser.parse(
+                message=request.message,
+                rule_decision=rule_decision,
+                rule_constraints=rule_constraints,
+                recent_messages=recent_messages,
+                conversation_snapshot=self._conversation_state_service.get_snapshot(conversation_id),
+            )
+            parsed = parser_result.parsed
+        else:
+            parsed = pre_resolved_parsed
+
+        if request.options.include_debug:
+            if parser_result is not None:
+                self._chat_debug_log(
+                    request.options,
+                    "parser mode=%s used_llm=%s latency_ms=%s intent=%s confidence=%s postcheck=%s",
+                    self._settings.query_parser_mode,
+                    parser_result.used_llm,
+                    parser_result.latency_ms,
+                    parsed.intent,
+                    parsed.confidence,
+                    parser_result.postcheck_passed,
+                )
+            else:
+                self._chat_debug_log(
+                    request.options,
+                    "parser skipped (pending clarification resolved) intent=%s confidence=%s",
+                    parsed.intent,
+                    parsed.confidence,
+                )
+
+        if not self._settings.clarification_enabled:
+            parsed = parsed.model_copy(update={"requires_clarification": False, "clarification": None})
+
+        if parsed.requires_clarification and parsed.clarification is not None:
+            self._chat_debug_log(request.options, "emit clarification_required intent=%s", parsed.intent)
+            pending_obj = self._clarification_manager.build_pending(
+                original_message=request.message,
+                parsed=parsed,
+            )
+            self._conversation_state_service.set_pending_clarification(conversation_id, pending_obj)
+            clar = parsed.clarification
+            response = ChatResponse(
+                conversation_id=conversation_id,
+                answer=clar.question,
+                intent="clarification_required",
+                route="clarification",
+                requires_clarification=True,
+                clarification=clar,
+                debug=self._build_debug(
+                    options=request.options,
+                    constraints=rule_constraints,
+                    decision=rule_decision,
+                    parser_debug=self._parser_debug_dict(parser_result),
+                ),
+            )
+            self._conversation_state_service.append_message(
+                conversation_id,
+                role="assistant",
+                content=response.answer,
+            )
+            return response
+
+        decision, constraints, message_for_search = self._parsed_request_adapter.to_pipeline_inputs(
+            parsed=parsed,
+            rule_decision=rule_decision,
+            rule_constraints=rule_constraints,
+            message=request.message,
+        )
         warnings = self._warnings_from_constraints(constraints)
+        self._chat_debug_log(
+            request.options,
+            "dispatch inputs intent=%s route=%s search_message_chars=%d "
+            "constraints dish=%r include=%d exclude=%d allergies=%d",
+            decision.intent,
+            decision.route,
+            len(message_for_search),
+            constraints.dish,
+            len(constraints.include_ingredients),
+            len(constraints.exclude_ingredients),
+            len(constraints.allergy_exclusions),
+        )
         response = self._dispatch(
             conversation_id=conversation_id,
-            message=request.message,
+            message=message_for_search,
             options=request.options,
             constraints=constraints,
             decision=decision,
             warnings=warnings,
+            parser_debug=self._parser_debug_dict(parser_result),
         )
+        self._conversation_state_service.clear_pending_clarification(conversation_id)
         self._conversation_state_service.append_message(
             conversation_id,
             role="assistant",
             content=response.answer,
         )
+        self._chat_debug_log(
+            request.options,
+            "done intent=%s route=%s answer_chars=%d recipes=%d",
+            response.intent,
+            response.route,
+            len(response.answer),
+            len(response.recipes),
+        )
         return response
+
+    def _pending_to_clarification_request(self, pending: PendingClarification) -> ClarificationRequest:
+        return ClarificationRequest(
+            reason=pending.reason or "unknown",
+            question=pending.question,
+            expected_fields=pending.expected_fields,
+            options=pending.options,
+        )
+
+    def _parser_debug_dict(self, parser_result) -> dict | None:
+        if parser_result is None:
+            return None
+        parsed = parser_result.parsed
+        safe_parsed = {
+            "intent": parsed.intent,
+            "confidence": parsed.confidence,
+            "requires_clarification": parsed.requires_clarification,
+            "constraints": parsed.constraints.model_dump(),
+        }
+        return {
+            "mode": self._settings.query_parser_mode,
+            "used_llm": parser_result.used_llm,
+            "fallback_reason": parser_result.fallback_reason,
+            "latency_ms": parser_result.latency_ms,
+            "postcheck_passed": parser_result.postcheck_passed,
+            "postcheck_errors": list(parser_result.postcheck_errors),
+            "parsed_request": safe_parsed,
+        }
 
     def _dispatch(
         self,
@@ -91,13 +306,21 @@ class ChatPipeline:
         constraints: QueryConstraints,
         decision: IntentDecision,
         warnings: list[str],
+        parser_debug: dict | None = None,
     ) -> ChatResponse:
+        self._chat_debug_log(
+            options,
+            "_dispatch intent=%s route=%s",
+            decision.intent,
+            decision.route,
+        )
         if decision.intent in {"search_recipes", "recommend_recipes", "allergy_or_exclusion"}:
             execution = self._search_service.search(
                 message,
                 constraints=constraints,
                 top_k=options.top_k,
             )
+            self._chat_debug_search(options, "recipe search", execution)
             recipes = self._rows_to_cards(execution.final_results)
             self._conversation_state_service.update_snapshot(
                 conversation_id,
@@ -114,6 +337,7 @@ class ChatPipeline:
                 constraints=constraints,
                 sources=self._sources_from_cards(recipes),
             )
+            self._chat_debug_llm(options, llm_result)
             return ChatResponse(
                 conversation_id=conversation_id,
                 answer=llm_result.answer,
@@ -128,6 +352,7 @@ class ChatPipeline:
                     decision=decision,
                     execution=execution,
                     llm_result=llm_result,
+                    parser_debug=parser_debug,
                 ),
             )
 
@@ -140,6 +365,7 @@ class ChatPipeline:
                         constraints=constraints,
                         top_k=options.top_k,
                     )
+                    self._chat_debug_search(options, "nutrition candidate search", execution)
                     recipes = self._rows_to_cards(execution.final_results)
                     self._conversation_state_service.update_snapshot(
                         conversation_id,
@@ -159,6 +385,7 @@ class ChatPipeline:
                         constraints=constraints,
                         sources=self._sources_from_cards(recipes),
                     )
+                    self._chat_debug_llm(options, llm_result)
                     return ChatResponse(
                         conversation_id=conversation_id,
                         answer=llm_result.answer,
@@ -173,6 +400,7 @@ class ChatPipeline:
                             decision=decision,
                             execution=execution,
                             llm_result=llm_result,
+                            parser_debug=parser_debug,
                         ),
                     )
                 return self._response_for_missing_recipe(
@@ -181,6 +409,9 @@ class ChatPipeline:
                     warnings=warnings,
                     candidates=resolved.candidates,
                     answer_if_missing="Я не смог однозначно определить рецепт. Напишите его название или сначала попросите найти рецепты.",
+                    options=options,
+                    constraints=constraints,
+                    parser_debug=parser_debug,
                 )
             detail = self._recipe_repository.row_to_recipe_detail(resolved.row)
             nutrient = decision.entities.get("nutrient")
@@ -195,6 +426,7 @@ class ChatPipeline:
                 constraints=constraints,
                 sources=[self._source_from_detail(detail)],
             )
+            self._chat_debug_llm(options, llm_result)
             self._conversation_state_service.update_snapshot(
                 conversation_id,
                 selected_recipe_id=detail.recipe_id,
@@ -213,6 +445,7 @@ class ChatPipeline:
                     constraints=constraints,
                     decision=decision,
                     llm_result=llm_result,
+                    parser_debug=parser_debug,
                 ),
             )
 
@@ -225,6 +458,9 @@ class ChatPipeline:
                     warnings=warnings,
                     candidates=resolved.candidates,
                     answer_if_missing="Я пока не показывал список рецептов в этом диалоге. Напишите, какой рецепт найти, или задайте поиск.",
+                    options=options,
+                    constraints=constraints,
+                    parser_debug=parser_debug,
                 )
             detail = self._recipe_repository.row_to_recipe_detail(resolved.row)
             self._conversation_state_service.update_snapshot(
@@ -240,6 +476,7 @@ class ChatPipeline:
                 constraints=constraints,
                 sources=[self._source_from_detail(detail)],
             )
+            self._chat_debug_llm(options, llm_result)
             return ChatResponse(
                 conversation_id=conversation_id,
                 answer=llm_result.answer,
@@ -253,6 +490,7 @@ class ChatPipeline:
                     constraints=constraints,
                     decision=decision,
                     llm_result=llm_result,
+                    parser_debug=parser_debug,
                 ),
             )
 
@@ -268,6 +506,7 @@ class ChatPipeline:
                 warnings=warnings,
                 constraints=constraints,
             )
+            self._chat_debug_llm(options, llm_result)
             return ChatResponse(
                 conversation_id=conversation_id,
                 answer=llm_result.answer,
@@ -280,6 +519,7 @@ class ChatPipeline:
                     constraints=constraints,
                     decision=decision,
                     llm_result=llm_result,
+                    parser_debug=parser_debug,
                 ),
             )
 
@@ -297,7 +537,12 @@ class ChatPipeline:
                         route="substitution_catalog",
                         substitutions=substitution.options,
                         warnings=warnings,
-                        debug=self._build_debug(options=options, constraints=constraints, decision=decision),
+                        debug=self._build_debug(
+                            options=options,
+                            constraints=constraints,
+                            decision=decision,
+                            parser_debug=parser_debug,
+                        ),
                     )
                 return self._response_for_missing_recipe(
                     conversation_id=conversation_id,
@@ -305,6 +550,9 @@ class ChatPipeline:
                     warnings=warnings,
                     candidates=resolved.candidates,
                     answer_if_missing="Я пока не понимаю, для какого рецепта нужна замена. Назовите рецепт или сначала попросите найти рецепты.",
+                    options=options,
+                    constraints=constraints,
+                    parser_debug=parser_debug,
                 )
             detail = self._recipe_repository.row_to_recipe_detail(resolved.row)
             self._conversation_state_service.update_snapshot(
@@ -335,6 +583,7 @@ class ChatPipeline:
                 warnings=warnings,
                 constraints=constraints,
             )
+            self._chat_debug_llm(options, llm_result)
             return ChatResponse(
                 conversation_id=conversation_id,
                 answer=llm_result.answer,
@@ -349,6 +598,7 @@ class ChatPipeline:
                     constraints=constraints,
                     decision=decision,
                     llm_result=llm_result,
+                    parser_debug=parser_debug,
                 ),
             )
 
@@ -361,6 +611,9 @@ class ChatPipeline:
                     warnings=warnings,
                     candidates=resolved.candidates,
                     answer_if_missing="Сначала выберите рецепт: покажите список или уточните название блюда.",
+                    options=options,
+                    constraints=constraints,
+                    parser_debug=parser_debug,
                 )
             base_row = resolved.row
             similar_rows = self._vector_search_service.similar_by_recipe_id(
@@ -371,12 +624,19 @@ class ChatPipeline:
                 row for row in similar_rows
                 if int(row.get("id") or 0) != int(base_row["id"])
             ]
+            self._chat_debug_log(
+                options,
+                "similar base_recipe_id=%s vector_neighbors=%d",
+                int(base_row["id"]),
+                len(similar_rows),
+            )
             execution = self._search_service.similar_recipes(
                 normalized_query=message,
                 base_rows=similar_rows,
                 constraints=constraints,
                 top_k=options.top_k,
             )
+            self._chat_debug_search(options, "similar_recipes rerank", execution)
             recipes = self._rows_to_cards(execution.final_results)
             self._conversation_state_service.update_snapshot(
                 conversation_id,
@@ -394,6 +654,7 @@ class ChatPipeline:
                 constraints=constraints,
                 sources=self._sources_from_cards(recipes),
             )
+            self._chat_debug_llm(options, llm_result)
             return ChatResponse(
                 conversation_id=conversation_id,
                 answer=llm_result.answer,
@@ -408,11 +669,17 @@ class ChatPipeline:
                     decision=decision,
                     execution=execution,
                     llm_result=llm_result,
+                    parser_debug=parser_debug,
                 ),
             )
 
         if decision.intent == "conversation_recall":
             recent_messages = self._conversation_state_service.get_recent_messages(conversation_id, limit=6)
+            self._chat_debug_log(
+                options,
+                "conversation_recall messages_considered=%d",
+                len(recent_messages),
+            )
             answer = self._render_conversation_recall_answer(recent_messages)
             return ChatResponse(
                 conversation_id=conversation_id,
@@ -425,17 +692,25 @@ class ChatPipeline:
                     options=options,
                     constraints=constraints,
                     decision=decision,
+                    parser_debug=parser_debug,
                 ),
             )
 
         default_fallback = "Я могу помочь найти рецепт, показать детали, БЖУ или варианты замены ингредиента."
         llm_result = None
         if options.include_debug:
+            self._chat_debug_log(
+                options,
+                "fallback intent=%s route=%s (static answer; optional LLM for debug block)",
+                decision.intent,
+                decision.route,
+            )
             llm_result = self._answer_generator.generate_missing_context_answer(
                 user_message=message,
                 fallback_answer=default_fallback,
                 warnings=warnings,
             )
+            self._chat_debug_llm(options, llm_result)
         return ChatResponse(
             conversation_id=conversation_id,
             answer=default_fallback,
@@ -448,6 +723,7 @@ class ChatPipeline:
                 constraints=constraints,
                 decision=decision,
                 llm_result=llm_result,
+                parser_debug=parser_debug,
             ),
         )
 
@@ -522,6 +798,9 @@ class ChatPipeline:
         warnings: list[str],
         candidates: list[dict],
         answer_if_missing: str,
+        options: ChatOptions | None = None,
+        constraints: QueryConstraints | None = None,
+        parser_debug: dict | None = None,
     ) -> ChatResponse:
         cards = self._rows_to_cards(candidates)
         if cards:
@@ -534,6 +813,14 @@ class ChatPipeline:
             )
         else:
             answer = answer_if_missing
+        debug = None
+        if options is not None and constraints is not None:
+            debug = self._build_debug(
+                options=options,
+                constraints=constraints,
+                decision=decision,
+                parser_debug=parser_debug,
+            )
         return ChatResponse(
             conversation_id=conversation_id,
             answer=answer,
@@ -542,6 +829,7 @@ class ChatPipeline:
             recipes=cards,
             warnings=warnings,
             sources=self._sources_from_cards(cards),
+            debug=debug,
         )
 
     def _rows_to_cards(self, rows: list[dict]) -> list[RecipeCard]:
@@ -685,6 +973,7 @@ class ChatPipeline:
         decision: IntentDecision,
         execution=None,
         llm_result: AnswerGenerationResult | None = None,
+        parser_debug: dict | None = None,
     ) -> ChatDebugInfo | None:
         if not options.include_debug:
             return None
@@ -696,6 +985,7 @@ class ChatPipeline:
             keyword_results=self._simplify_rows(getattr(execution, "keyword_results", [])),
             final_results=self._simplify_rows(getattr(execution, "final_results", [])),
             llm=self._build_llm_debug(llm_result),
+            parser=parser_debug,
         )
 
     def _build_llm_debug(self, llm_result: AnswerGenerationResult | None) -> dict | None:

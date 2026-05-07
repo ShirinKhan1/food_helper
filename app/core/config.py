@@ -38,6 +38,21 @@ class Settings:
     llm_max_context_steps: int
     llm_max_answer_chars: int
     llm_strip_think_tags: bool
+    query_parser_mode: str
+    llm_query_parser_enabled: bool
+    llm_query_parser_provider: str
+    llm_query_parser_model: str
+    llm_query_parser_temperature: float
+    llm_query_parser_max_tokens: int
+    llm_query_parser_num_ctx: int
+    llm_query_parser_timeout_seconds: float
+    llm_query_parser_confidence_threshold: float
+    llm_query_parser_postcheck_enabled: bool
+    llm_query_parser_log_prompts: bool
+    llm_query_parser_log_responses: bool
+    query_parser_recent_messages_limit: int
+    clarification_enabled: bool
+    clarification_max_question_chars: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -46,6 +61,9 @@ class Settings:
         answer_mode = os.getenv("ANSWER_MODE", "auto")
         if answer_mode not in {"template", "llm", "auto"}:
             raise ValueError("ANSWER_MODE must be one of: template, llm, auto")
+        query_parser_mode = os.getenv("QUERY_PARSER_MODE", "rules")
+        if query_parser_mode not in {"rules", "llm", "auto"}:
+            raise ValueError("QUERY_PARSER_MODE must be one of: rules, llm, auto")
         return cls(
             app_name=os.getenv("APP_NAME", "Food Helper API"),
             db_dsn=db_dsn,
@@ -83,4 +101,30 @@ class Settings:
             llm_max_context_steps=int(os.getenv("LLM_MAX_CONTEXT_STEPS", "20")),
             llm_max_answer_chars=int(os.getenv("LLM_MAX_ANSWER_CHARS", "2500")),
             llm_strip_think_tags=os.getenv("LLM_STRIP_THINK_TAGS", "true").lower() == "true",
+            query_parser_mode=query_parser_mode,
+            llm_query_parser_enabled=os.getenv("LLM_QUERY_PARSER_ENABLED", "false").lower() == "true",
+            llm_query_parser_provider=os.getenv("LLM_QUERY_PARSER_PROVIDER", "ollama"),
+            llm_query_parser_model=os.getenv("LLM_QUERY_PARSER_MODEL", "qwen3:4b"),
+            llm_query_parser_temperature=float(os.getenv("LLM_QUERY_PARSER_TEMPERATURE", "0")),
+            llm_query_parser_max_tokens=int(os.getenv("LLM_QUERY_PARSER_MAX_TOKENS", "700")),
+            llm_query_parser_num_ctx=int(os.getenv("LLM_QUERY_PARSER_NUM_CTX", "4096")),
+            llm_query_parser_timeout_seconds=float(os.getenv("LLM_QUERY_PARSER_TIMEOUT_SECONDS", "15")),
+            llm_query_parser_confidence_threshold=float(
+                os.getenv("LLM_QUERY_PARSER_CONFIDENCE_THRESHOLD", "0.65")
+            ),
+            llm_query_parser_postcheck_enabled=os.getenv(
+                "LLM_QUERY_PARSER_POSTCHECK_ENABLED", "true"
+            ).lower()
+            == "true",
+            llm_query_parser_log_prompts=os.getenv("LLM_QUERY_PARSER_LOG_PROMPTS", "false").lower()
+            == "true",
+            llm_query_parser_log_responses=os.getenv("LLM_QUERY_PARSER_LOG_RESPONSES", "false").lower()
+            == "true",
+            query_parser_recent_messages_limit=int(
+                os.getenv("QUERY_PARSER_RECENT_MESSAGES_LIMIT", "6")
+            ),
+            clarification_enabled=os.getenv("CLARIFICATION_ENABLED", "true").lower() == "true",
+            clarification_max_question_chars=int(
+                os.getenv("CLARIFICATION_MAX_QUESTION_CHARS", "250")
+            ),
         )

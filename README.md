@@ -81,7 +81,28 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 python -m pytest -q
 ```
 
-Минимальный smoke-набор API находится в `tests/test_api.py`.
+Офлайн-прогон набора для парсера запросов (правила + согласованность с `LLMQueryParser` в режиме без вызова LLM):
+
+```bash
+python scripts/eval/run_query_parser_eval.py
+```
+
+## LLM Query Parser (v1)
+
+Поверх rule-based разбора опционально вызывается LLM как структурный парсер запроса (см. [docs/food_helper_llm_query_parser_v1_tz.md](docs/food_helper_llm_query_parser_v1_tz.md)).
+
+По умолчанию парсер **выключен** (поведение как до v1). Чтобы включить локально при работающем Ollama:
+
+| Переменная | Пример для разработки |
+|------------|------------------------|
+| `QUERY_PARSER_MODE` | `auto` или `llm` |
+| `LLM_QUERY_PARSER_ENABLED` | `true` |
+| `LLM_QUERY_PARSER_MODEL` | `qwen3:4b` |
+| `LLM_QUERY_PARSER_TIMEOUT_SECONDS` | `15` |
+| `LLM_QUERY_PARSER_CONFIDENCE_THRESHOLD` | `0.65` |
+| `CLARIFICATION_ENABLED` | `true` |
+
+Режимы `QUERY_PARSER_MODE`: `rules` (без LLM), `llm` (всегда вызывать LLM с fallback на rules), `auto` (эвристики «сложного» запроса).
 
 ## Структура репозитория
 
