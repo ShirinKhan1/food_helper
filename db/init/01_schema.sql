@@ -3,6 +3,7 @@
 --   docker compose exec -T db psql -U food -d food_helper -f - < db/migrations/manual_pgvector_embeddings.sql
 
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS recipes (
   id              BIGSERIAL PRIMARY KEY,
@@ -45,11 +46,26 @@ CREATE TABLE IF NOT EXISTS recipe_embeddings (
 CREATE INDEX IF NOT EXISTS recipe_embeddings_hnsw_idx
   ON recipe_embeddings USING hnsw (embedding vector_cosine_ops);
 
-CREATE TABLE IF NOT EXISTS chat_sessions (
-  conversation_id UUID PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS users (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email           TEXT NOT NULL UNIQUE,
+  password_hash   TEXT NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS users_email_idx ON users (lower(email));
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  conversation_id UUID PRIMARY KEY,
+  user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
+  title           TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS chat_sessions_user_updated_idx
+  ON chat_sessions (user_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS chat_messages (
   id              BIGSERIAL PRIMARY KEY,

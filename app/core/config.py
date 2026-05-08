@@ -53,6 +53,11 @@ class Settings:
     query_parser_recent_messages_limit: int
     clarification_enabled: bool
     clarification_max_question_chars: int
+    auth_secret_key: str
+    auth_access_token_expire_minutes: int
+    auth_cookie_name: str
+    auth_cookie_secure: bool
+    frontend_origin: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -127,4 +132,11 @@ class Settings:
             clarification_max_question_chars=int(
                 os.getenv("CLARIFICATION_MAX_QUESTION_CHARS", "250")
             ),
+            auth_secret_key=os.getenv("AUTH_SECRET_KEY", "dev-only-change-in-production-min-16-chars").strip(),
+            auth_access_token_expire_minutes=int(
+                os.getenv("AUTH_ACCESS_TOKEN_EXPIRE_MINUTES", "10080")
+            ),
+            auth_cookie_name=os.getenv("AUTH_COOKIE_NAME", "food_helper_access_token"),
+            auth_cookie_secure=os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true",
+            frontend_origin=os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").strip(),
         )

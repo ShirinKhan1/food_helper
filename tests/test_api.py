@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,7 +37,7 @@ class FakeChatPipeline:
         self._response = response
         self._error = error
 
-    def handle_chat(self, request: ChatRequest) -> ChatResponse:
+    def handle_chat(self, request: ChatRequest, current_user_id: UUID | None = None) -> ChatResponse:
         if self._error:
             raise self._error
         assert request.message
@@ -118,14 +120,44 @@ def _services(chat_pipeline: FakeChatPipeline | None = None):
         warnings=[],
         sources=[],
     )
+    settings = SimpleNamespace(
+        max_message_chars=1000,
+        auth_cookie_name="food_helper_access_token",
+        auth_secret_key="unit-test-secret-key-32chars-minimum",
+        auth_access_token_expire_minutes=10080,
+        auth_cookie_secure=False,
+        frontend_origin="http://localhost:3000",
+    )
+    user_repository = SimpleNamespace(
+        get_by_id=lambda _id: None,
+        create_user=lambda *a, **k: (_ for _ in ()).throw(NotImplementedError()),
+        get_password_hash_by_email=lambda _e: None,
+    )
+    chat_history_repository = SimpleNamespace(
+        list_chats=lambda _uid: [],
+        get_chat_with_messages=lambda *_a: None,
+        update_title=lambda *_a: None,
+        delete_chat=lambda *_a: False,
+    )
     return SimpleNamespace(
-        settings=SimpleNamespace(max_message_chars=1000),
+        settings=settings,
         db=FakeDB(),
         embedding_service=FakeEmbeddingService(),
         chat_pipeline=chat_pipeline or FakeChatPipeline(response=response),
         search_service=FakeSearchService(),
         recipe_repository=FakeRecipeRepository(),
+        user_repository=user_repository,
+        chat_history_repository=chat_history_repository,
     )
+
+
+def test_chat_endpoint_rejects_invalid_conversation_id() -> None:
+    client = TestClient(create_app(services=_services()))
+    r = client.post(
+        "/v1/chat",
+        json={"message": "hello", "conversation_id": "not-a-uuid"},
+    )
+    assert r.status_code == 400
 
 
 def test_health_endpoint() -> None:

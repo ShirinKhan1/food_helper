@@ -11,6 +11,7 @@ from app.orchestrator.pipeline import ChatPipeline
 from app.services.llm.parser_postcheck import ParserPostcheck
 from app.services.llm.query_parser import LLMQueryParser
 from app.services.answer_generator import AnswerGenerator
+from app.services.chat_history_repository import ChatHistoryRepository
 from app.services.conversation_state import ConversationStateService
 from app.services.embeddings import EmbeddingService
 from app.services.hybrid_search import HybridSearchService
@@ -22,6 +23,7 @@ from app.services.llm.null import NullLLMClient
 from app.services.llm.ollama import OllamaLLMClient
 from app.services.search_service import SearchService
 from app.services.substitution import SubstitutionService
+from app.services.user_repository import UserRepository
 from app.services.vector_search import VectorSearchService
 
 
@@ -42,6 +44,8 @@ class AppServices:
     intent_router: IntentRouter
     answer_generator: AnswerGenerator
     chat_pipeline: ChatPipeline
+    user_repository: UserRepository
+    chat_history_repository: ChatHistoryRepository
 
 
 def build_services(settings: Settings | None = None) -> AppServices:
@@ -64,6 +68,8 @@ def build_services(settings: Settings | None = None) -> AppServices:
     nutrition_service = NutritionService(recipe_repository)
     substitution_service = SubstitutionService(ingredient_catalog)
     conversation_state_service = ConversationStateService(db)
+    user_repository = UserRepository(db)
+    chat_history_repository = ChatHistoryRepository(db)
     intent_router = IntentRouter()
     parser_postcheck = ParserPostcheck(
         max_question_chars=resolved_settings.clarification_max_question_chars,
@@ -141,4 +147,6 @@ def build_services(settings: Settings | None = None) -> AppServices:
         intent_router=intent_router,
         answer_generator=answer_generator,
         chat_pipeline=chat_pipeline,
+        user_repository=user_repository,
+        chat_history_repository=chat_history_repository,
     )

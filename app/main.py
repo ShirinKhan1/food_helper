@@ -3,8 +3,11 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_auth import router as auth_router
 from app.api.routes_chat import router as chat_router
+from app.api.routes_chats import router as chats_router
 from app.api.routes_debug import router as debug_router
 from app.api.routes_recipes import router as recipes_router
 from app.core.config import Settings
@@ -32,6 +35,17 @@ def create_app(
 
     app = FastAPI(title=resolved_settings.app_name, lifespan=lifespan)
     app.state.services = resolved_services
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[resolved_settings.frontend_origin],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(auth_router)
+    app.include_router(chats_router)
     app.include_router(chat_router)
     app.include_router(debug_router)
     app.include_router(recipes_router)

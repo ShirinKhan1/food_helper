@@ -2,3 +2,6 @@
 fastapi>=0.115.0
 uvicorn>=0.32.0
 httpx>=0.28.0
+PyJWT>=2.8.0
+bcrypt>=4.0.0
+email-validator>=2.0.0

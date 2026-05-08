@@ -14,6 +14,8 @@ from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
 from app.orchestrator.pipeline import ChatPipeline
 from app.schemas.chat import ChatRequest
 from app.services.answer_generator import AnswerGenerator
+from uuid import UUID
+
 from app.services.conversation_state import ConversationSnapshot
 from app.services.llm.parser_postcheck import ParserPostcheck
 from app.services.llm.query_parser import LLMQueryParser
@@ -34,10 +36,13 @@ class InMemoryConversationStateService:
         self.snapshots: dict[str, ConversationSnapshot] = {}
         self.messages: list[tuple[str, str, str]] = []
 
-    def ensure_conversation(self, conversation_id: str | None) -> str:
+    def prepare_conversation(self, conversation_id: str | None, user_id: UUID | None = None) -> str:
         cid = conversation_id or "conv-eval"
         self.snapshots.setdefault(cid, ConversationSnapshot(conversation_id=cid))
         return cid
+
+    def ensure_conversation(self, conversation_id: str | None) -> str:
+        return self.prepare_conversation(conversation_id, None)
 
     def append_message(self, conversation_id: str, *, role: str, content: str) -> None:
         self.messages.append((conversation_id, role, content))

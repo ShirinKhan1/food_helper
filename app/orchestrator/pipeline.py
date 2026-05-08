@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 import logging
 import re
 
@@ -94,9 +95,10 @@ class ChatPipeline:
             llm_result.postcheck_passed,
         )
 
-    def handle_chat(self, request: ChatRequest) -> ChatResponse:
-        conversation_id = self._conversation_state_service.ensure_conversation(
-            request.conversation_id
+    def handle_chat(self, request: ChatRequest, *, current_user_id: UUID | None = None) -> ChatResponse:
+        conversation_id = self._conversation_state_service.prepare_conversation(
+            request.conversation_id,
+            current_user_id,
         )
         self._conversation_state_service.append_message(
             conversation_id,

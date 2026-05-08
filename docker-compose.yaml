@@ -101,6 +101,9 @@ services:
       LLM_MAX_TOKENS: "500"
       LLM_NUM_CTX: "4096"
       LLM_THINK: "false"
+      FRONTEND_ORIGIN: http://localhost:3000
+      AUTH_SECRET_KEY: dev-docker-compose-change-in-production-min-32chars
+      AUTH_COOKIE_SECURE: "false"
     volumes:
       - .:/app
     depends_on:
@@ -110,6 +113,21 @@ services:
         condition: service_started
     ports:
       - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+      args:
+        API_PROXY_TARGET: http://api:8000
+        NEXT_PUBLIC_API_BASE_URL: ""
+    container_name: food_helper_web
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

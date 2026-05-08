@@ -5,8 +5,9 @@
 Проект состоит из:
 - Postgres + `pgvector` для хранения рецептов и эмбеддингов;
 - сервисов поиска и оркестрации в `app/`;
+- фронтенда MVP в `web/` (Next.js, чат, email/password, история чатов);
 - утилит загрузки/эмбеддингов в `scripts/`;
-- Docker-сборки для `db`, `loader`, `embed`, `api`.
+- Docker-сборки для `db`, `loader`, `embed`, `api`, **`web`** (Next.js в контейнере).
 
 Подробности по Compose-профилям и контейнерам: [docs/docker-compose.md](docs/docker-compose.md).  
 Архитектурные заметки и контекст RAG: [docs/food_helper_rag_tz.md](docs/food_helper_rag_tz.md).
@@ -33,13 +34,16 @@ docker compose --profile load run --rm loader
 docker compose --profile embed run --rm embed python scripts/embedding/embed_recipes.py --from-db --only-missing --db-fetch-batch 500
 ```
 
-### 4) Запустить API
+### 4) Запустить API и веб-интерфейс
 
 ```bash
-docker compose up -d api
+docker compose build api web
+docker compose up -d db ollama api web
 ```
 
-Проверка здоровья:
+Сайт в браузере: **[http://localhost:3000/](http://localhost:3000/)** — один адрес; запросы к API идут через прокси внутри Docker (порт **8000** снаружи можно не открывать, но он проброшен для отладки).
+
+Проверка API (опционально):
 
 ```bash
 curl http://localhost:8000/health
@@ -56,12 +60,74 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Важно: при первом запуске модель эмбеддингов может загружаться дольше обычного.
 
+### Миграция БД (пользователи и привязка чатов)
+
+Если том Postgres уже создан со старой схемой, примените SQL вручную:
+
+```bash
+docker compose exec -T db psql -U food -d food_helper -f - < db/migrations/manual_users_and_chat_sessions.sql
+```
+
+Для новых томов актуальная схема уже в [`db/init/01_schema.sql`](db/init/01_schema.sql).
+
+Переменные окружения для JWT и CORS (локально можно оставить значения по умолчанию из `Settings.from_env`, кроме секрета в продакшене):
+
+- `AUTH_SECRET_KEY` — секрет подписи JWT (в продакшене задайте длинную случайную строку);
+- `AUTH_COOKIE_SECURE` — `true` за HTTPS;
+- `FRONTEND_ORIGIN` — origin фронта, например `http://localhost:3000` (CORS + cookie).
+
+## Веб-сайт (интерфейс Food Helper)
+
+Код фронта в каталоге [`web/`](web/).
+
+### Вариант A — всё в Docker (одна ссылка)
+
+После `docker compose up -d ...` с сервисом **`web`** откройте в браузере:
+
+| Страница | URL |
+|----------|-----|
+| **Главная — чат** | [http://localhost:3000/](http://localhost:3000/) |
+| Вход | [http://localhost:3000/login](http://localhost:3000/login) |
+| Регистрация | [http://localhost:3000/register](http://localhost:3000/register) |
+| Чат по id | `http://localhost:3000/chat/<conversation_id>` |
+
+В контейнере `web` фронт обращается к API **по относительным путям** `/v1/...`: Next.js проксирует их на сервис `api` (`API_PROXY_TARGET` при сборке образа). Cookie авторизации остаются на том же origin (`localhost:3000`), CORS для браузера не нужен.
+
+Пересборка только фронта после правок в `web/`:
+
+```bash
+docker compose build web && docker compose up -d web
+```
+
+### Вариант B — фронт локально (`npm run dev`), API в Docker
+
+Тогда в `web/.env.local` задайте прямой URL API:
+
+```bash
+cd web
+copy .env.example .env.local
+npm install
+npm run dev
+```
+
+В [`web/.env.example`](web/.env.example) по умолчанию **`NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`**. Для `npm run dev` **не** задавайте `API_PROXY_TARGET` (он только для сборки Docker-образа).
+
+Если подняли Next на другом порту, выставьте у API **`FRONTEND_ORIGIN`** на этот origin (например `http://localhost:3001`).
+
+Проверка типов фронта: `npm run test` (`tsc --noEmit`).
+
+### Поведение
+
+**Без входа** — чат на главной, без истории. **После регистрации/входа** — сайдбар с чатами, «Новый чат», открытие старых диалогов.
+
 ## API эндпоинты
 
 - `GET /health` - статус сервиса, БД и embedding-модели.
 - `POST /v1/chat` - основной чатовый запрос (оркестратор + поиск).
 - `POST /v1/search/debug` - отладочный ответ поиска (нормализованный запрос, constraints, кандидаты).
 - `GET /v1/recipes/{recipe_id}` - получить подробности рецепта по ID.
+- `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/logout`, `GET /v1/auth/me` — регистрация, вход, cookie JWT;
+- `GET /v1/chats`, `GET /v1/chats/{id}`, `PATCH /v1/chats/{id}`, `DELETE /v1/chats/{id}` — история чатов (только для авторизованного пользователя).
 
 Примеры запросов: [docs/api-test-requests.md](docs/api-test-requests.md).
 
@@ -110,11 +176,12 @@ python scripts/eval/run_query_parser_eval.py
 |------|------------|
 | [app/](app/) | FastAPI-приложение, роуты, схемы, оркестратор, сервисы |
 | [db/](db/) | Инициализация схемы БД и SQL-миграции |
-| [docker/](docker/) | Dockerfile'ы для API и embedding-контейнера |
+| [docker/](docker/) | Dockerfile'ы для API, embedding-контейнера и **веб-UI** (`Dockerfile.web`) |
 | [scripts/](scripts/) | Загрузка данных, эмбеддинги, утилиты поиска |
 | [pipeline/](pipeline/) | Сбор/парсинг исходных рецептов |
 | [data/](data/) | Справочные JSON (алиасы, группы ингредиентов, substitutions) |
 | [docs/](docs/) | Документация по запуску, API и архитектуре |
+| [web/](web/) | Веб-интерфейс (Next.js): чат, вход, история чатов |
 | [tests/](tests/) | Unit/API тесты |
 
 ## Полезные заметки

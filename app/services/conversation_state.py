@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from psycopg2.extras import Json, RealDictCursor
 
@@ -10,6 +10,17 @@ from app.core.db import Database
 from app.orchestrator.clarification import PendingClarification
 
 _UNSET = object()
+
+
+class ConversationAccessDenied(Exception):
+    """Raised when the caller cannot use this conversation (maps to HTTP 404)."""
+
+
+def _derive_title_from_message(content: str, *, max_len: int = 60) -> str:
+    one_line = " ".join(content.split())
+    if len(one_line) <= max_len:
+        return one_line
+    return one_line[: max_len - 1] + "…"
 
 
 @dataclass
@@ -24,18 +35,68 @@ class ConversationStateService:
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    def ensure_conversation(self, conversation_id: str | None) -> str:
-        cid = conversation_id or str(uuid4())
+    def _get_session_owner_row(self, conversation_id: str) -> dict | None:
+        with self._db.connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT conversation_id, user_id
+                    FROM chat_sessions
+                    WHERE conversation_id = %s::uuid
+                    """,
+                    (conversation_id,),
+                )
+                row = cur.fetchone()
+        return dict(row) if row else None
+
+    def prepare_conversation(self, conversation_id: str | None, user_id: UUID | None) -> str:
+        """
+        Resolve or create a chat session for the given auth context.
+        - New chat: conversation_id is None -> new UUID, insert with user_id.
+        - Continue: conversation_id set -> row must exist and user_id must match policy.
+        """
+        if conversation_id is not None:
+            cid = conversation_id.strip()
+            row = self._get_session_owner_row(cid)
+            if row is None:
+                raise ConversationAccessDenied()
+            session_uid = row.get("user_id")
+            if user_id is not None:
+                if session_uid is None or session_uid != user_id:
+                    raise ConversationAccessDenied()
+            else:
+                if session_uid is not None:
+                    raise ConversationAccessDenied()
+            with self._db.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        UPDATE chat_sessions SET updated_at = now()
+                        WHERE conversation_id = %s::uuid
+                        """,
+                        (cid,),
+                    )
+                    cur.execute(
+                        """
+                        INSERT INTO conversation_state (conversation_id, state)
+                        VALUES (%s::uuid, '{}'::jsonb)
+                        ON CONFLICT (conversation_id) DO NOTHING
+                        """,
+                        (cid,),
+                    )
+            return cid
+
+        cid = str(uuid4())
         with self._db.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO chat_sessions (conversation_id)
-                    VALUES (%s::uuid)
+                    INSERT INTO chat_sessions (conversation_id, user_id)
+                    VALUES (%s::uuid, %s)
                     ON CONFLICT (conversation_id) DO UPDATE
                     SET updated_at = now()
                     """,
-                    (cid,),
+                    (cid, str(user_id) if user_id is not None else None),
                 )
                 cur.execute(
                     """
@@ -61,6 +122,16 @@ class ConversationStateService:
                     "UPDATE chat_sessions SET updated_at = now() WHERE conversation_id = %s::uuid",
                     (conversation_id,),
                 )
+                if role == "user":
+                    title = _derive_title_from_message(content)
+                    cur.execute(
+                        """
+                        UPDATE chat_sessions
+                        SET title = %s
+                        WHERE conversation_id = %s::uuid AND title IS NULL
+                        """,
+                        (title, conversation_id),
+                    )
 
     def _load_state_dict(self, conversation_id: str) -> dict[str, Any]:
         with self._db.connection() as conn:

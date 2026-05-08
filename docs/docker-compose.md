@@ -11,6 +11,7 @@
 | `loader` | `load` | `food_helper_loader` | Однократная загрузка `recipes.jsonl` в БД |
 | `embed` | `embed` | **`food_helper`** | Образ с Python, зависимостями из `requirements-embed.txt`; по умолчанию **`sleep infinity`** (удобно для `exec`, тестов и поиска) |
 | `api` | *(нет)* | `food_helper_api` | FastAPI на порту **8000→8000**; LLM-запросы идут в `http://ollama:11434` |
+| `web` | *(нет)* | `food_helper_web` | Next.js UI на **3000→3000**; прокси `/v1/*` и `/health` → `api` (в браузере достаточно **http://localhost:3000**) |
 
 Тома: `pgdata` (данные Postgres), `ollama_data` (скачанные модели Ollama). Модель эмбеддингов сохраняется внутрь Docker-образов при сборке и используется из `/opt/models/intfloat-multilingual-e5-small`.
 
@@ -278,9 +279,21 @@ docker network inspect food_helper_default
 
 1. `.env` с `HF_TOKEN` (по желанию; полезно при скачивании модели во время build).
 2. `docker compose build api embed`
-3. `docker compose up -d db ollama api`
+3. `docker compose up -d db ollama api web`
 4. `docker compose exec ollama ollama pull qwen3:4b`
 5. При необходимости: `docker compose --profile load run --rm loader`
 6. При необходимости: `docker compose --profile embed run --rm embed python scripts/embedding/embed_recipes.py --from-db --only-missing`
 7. `docker compose --profile embed up -d embed` — дальше работа через `docker compose exec embed ...` (в т.ч. pytest — см. раздел «Тесты (pytest)» ниже).
 8. Остановка: `docker compose --profile embed down` (и при необходимости `docker compose down` для `db/ollama/api`, если `embed` уже снят).
+
+## Frontend и авторизация (MVP)
+
+В `docker-compose.yaml` у сервиса `api` заданы `FRONTEND_ORIGIN` и `AUTH_SECRET_KEY` для локальной разработки с Next.js на `http://localhost:3000`. Для продакшена замените `AUTH_SECRET_KEY` на случайную длинную строку и выставьте `AUTH_COOKIE_SECURE=true` при HTTPS.
+
+Если база уже существовала до появления таблицы `users` и колонок в `chat_sessions`, примените миграцию:
+
+```powershell
+Get-Content db/migrations/manual_users_and_chat_sessions.sql | docker compose exec -T db psql -U food -d food_helper
+```
+
+Фронтенд: каталог `web/`, образ `docker/Dockerfile.web`, сервис `web` в Compose. После `docker compose up -d web` откройте **http://localhost:3000/** (см. корневой [README.md](../README.md)).
