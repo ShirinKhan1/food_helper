@@ -44,6 +44,20 @@ def test_route_recommendation() -> None:
     assert decision.route == "hybrid_search"
 
 
+def test_route_event_new_year() -> None:
+    decision = IntentRouter().decide("Подбери рецепты на Новый год для 6 человек")
+    assert decision.intent == "event_recommendation"
+    assert decision.route == "event_menu_recommendation"
+    assert decision.entities.get("event_profile", {}).get("event_type") == "new_year"
+
+
+def test_route_event_date_night_excludes() -> None:
+    decision = IntentRouter().decide("Хочу романтический ужин без морепродуктов")
+    assert decision.intent == "event_recommendation"
+    exc = decision.entities.get("exclude_ingredients") or []
+    assert any("морепродукт" in str(x).lower() for x in exc)
+
+
 def test_route_nutrition() -> None:
     decision = IntentRouter().decide("Сколько калорий в яблочном пироге?")
     assert decision.intent == "nutrition_question"

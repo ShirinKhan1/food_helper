@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from app.schemas.parser import ParsedUserRequest
+from app.services.event_profiles import ALLOWED_EVENT_TYPES
 
 if TYPE_CHECKING:
     from app.schemas.search import QueryConstraints
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 ALLOWED_INTENTS: set[str] = {
     "search_recipes",
     "recommend_recipes",
+    "event_recommendation",
     "nutrition_question",
     "ingredient_substitution",
     "general_substitution",
@@ -37,9 +39,16 @@ class ParserPostcheckResult(BaseModel):
 
 
 class ParserPostcheck:
-    def __init__(self, *, max_question_chars: int = 250, target_ingredient_max_len: int = 80) -> None:
+    def __init__(
+        self,
+        *,
+        max_question_chars: int = 250,
+        target_ingredient_max_len: int = 80,
+        event_max_guests: int = 30,
+    ) -> None:
         self._max_question_chars = max_question_chars
         self._target_ingredient_max_len = target_ingredient_max_len
+        self._event_max_guests = event_max_guests
 
     def validate(
         self,
@@ -104,6 +113,14 @@ class ParserPostcheck:
                 errors.append("target_ingredient_too_long")
             if "\n" in ti or "{" in ti or "}" in ti or "system" in ti.lower():
                 errors.append("target_ingredient_suspicious")
+
+        if parsed.event_profile is not None:
+            ep = parsed.event_profile
+            if ep.event_type is not None and ep.event_type not in ALLOWED_EVENT_TYPES:
+                errors.append(f"event_type_not_allowed:{ep.event_type}")
+            if ep.guests_count is not None:
+                if ep.guests_count < 1 or ep.guests_count > self._event_max_guests:
+                    errors.append("guests_count_out_of_range")
 
         blob = parsed.model_dump_json()
         if _SQLISH.search(blob):

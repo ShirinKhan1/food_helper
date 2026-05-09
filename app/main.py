@@ -12,6 +12,7 @@ from app.api.routes_debug import router as debug_router
 from app.api.routes_recipes import router as recipes_router
 from app.core.config import Settings
 from app.core.db import DatabaseUnavailableError
+from app.core.db_schema_bootstrap import ensure_schema
 from app.services.container import AppServices, build_services
 
 
@@ -26,6 +27,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.services = resolved_services
+        ensure_schema(resolved_services.db)
         try:
             resolved_services.embedding_service.maybe_preload()
         except Exception:

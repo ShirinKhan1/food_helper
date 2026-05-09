@@ -18,3 +18,6 @@ class LLMAnswerContext:
     warnings: list[str] = field(default_factory=list)
     sources: list[SourceInfo] = field(default_factory=list)
     detail_mode: str | None = None
+    event_profile: dict | None = None
+    event_menu: list[dict] | None = None
+    recent_dialog: list[dict[str, str]] | None = None

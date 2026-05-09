@@ -4,6 +4,7 @@ export type ChatRequestPayload = {
   conversation_id?: string | null;
   message: string;
   options?: { top_k?: number; include_debug?: boolean };
+  edit_user_message_id?: number | null;
 };
 
 export type ChatResponsePayload = {
@@ -19,6 +20,8 @@ export type ChatResponsePayload = {
   sources: SourceInfoPayload[];
   requires_clarification: boolean;
   clarification: ClarificationPayload | null;
+  user_message_id?: number | null;
+  assistant_message_id?: number | null;
 };
 
 export type ClarificationPayload = {

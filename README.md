@@ -10,7 +10,8 @@
 - Docker-сборки для `db`, `loader`, `embed`, `api`, **`web`** (Next.js в контейнере).
 
 Подробности по Compose-профилям и контейнерам: [docs/docker-compose.md](docs/docker-compose.md).  
-Архитектурные заметки и контекст RAG: [docs/food_helper_rag_tz.md](docs/food_helper_rag_tz.md).
+Архитектура backend и пайплайн чата: [docs/architecture.md](docs/architecture.md).  
+Оглавление всей документации в каталоге `docs/`: [docs/README.md](docs/README.md).
 
 ## Быстрый старт (Docker)
 
@@ -139,6 +140,7 @@ npm run dev
   - по запросу вида `... в рецепте с курицей` — вернуть список рецептов и числовые значения КБЖУ по каждому найденному.
 - `ingredient_substitution`: замена ингредиента в выбранном/найденном рецепте.
 - `general_substitution`: общая замена ингредиента без привязки к рецепту (`substitution_catalog`).
+- `event_recommendation`: меню под типовое событие (профиль события и группы блюд в ответе); см. [docs/event-menu.md](docs/event-menu.md).
 - Hard filters: исключения и аллергены применяются к `final_results`, включая аллергенные характеристики рецепта (например, `Аллергены -> Злаки`).
 
 ## Тесты
@@ -155,7 +157,7 @@ python scripts/eval/run_query_parser_eval.py
 
 ## LLM Query Parser (v1)
 
-Поверх rule-based разбора опционально вызывается LLM как структурный парсер запроса (см. [docs/food_helper_llm_query_parser_v1_tz.md](docs/food_helper_llm_query_parser_v1_tz.md)).
+Поверх rule-based разбора опционально вызывается LLM как структурный парсер запроса (см. [docs/query-parser.md](docs/query-parser.md)).
 
 По умолчанию парсер **выключен** (поведение как до v1). Чтобы включить локально при работающем Ollama:
 
@@ -180,7 +182,7 @@ python scripts/eval/run_query_parser_eval.py
 | [scripts/](scripts/) | Загрузка данных, эмбеддинги, утилиты поиска |
 | [pipeline/](pipeline/) | Сбор/парсинг исходных рецептов |
 | [data/](data/) | Справочные JSON (алиасы, группы ингредиентов, substitutions) |
-| [docs/](docs/) | Документация по запуску, API и архитектуре |
+| [docs/](docs/) | Справочники: Docker, API, архитектура, LLM, событийное меню ([индекс](docs/README.md)) |
 | [web/](web/) | Веб-интерфейс (Next.js): чат, вход, история чатов |
 | [tests/](tests/) | Unit/API тесты |
 

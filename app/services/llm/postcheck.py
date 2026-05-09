@@ -58,7 +58,7 @@ def validate_llm_answer(
     if _answer_violates_excluded_ingredients(sanitized, context):
         errors.append("forbidden_ingredient_mentioned")
 
-    if context.scenario in {"recipe_list", "similar_recipes"}:
+    if context.scenario in {"recipe_list", "similar_recipes", "event_menu"}:
         allowed_titles = {recipe.title.lower() for recipe in context.recipes}
         if allowed_titles and _contains_unknown_list_title(sanitized, allowed_titles):
             errors.append("hallucinated_recipe")

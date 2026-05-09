@@ -9,6 +9,7 @@ import httpx
 
 from app.core.config import Settings
 from app.schemas.chat import IntentDecision
+from app.schemas.event import EventProfile
 from app.schemas.parser import ParsedQueryConstraints, ParsedUserRequest, RecipeReference
 from app.schemas.search import QueryConstraints
 from app.services.llm.base import LLMClient, LLMGenerateRequest
@@ -19,6 +20,7 @@ from app.services.llm.parser_prompts import (
     rule_parse_json_for_prompt,
 )
 from app.services.llm.parser_result import QueryParserResult
+from app.orchestrator.event_extractor import merge_event_profiles
 
 if TYPE_CHECKING:
     from app.services.conversation_state import ConversationSnapshot
@@ -106,6 +108,20 @@ def merge_parsed_constraints_with_rules(
     return parsed.model_copy(update={"constraints": new_constraints})
 
 
+def apply_rule_event_profile(
+    parsed: ParsedUserRequest,
+    rule_decision: IntentDecision,
+) -> ParsedUserRequest:
+    if rule_decision.intent != "event_recommendation":
+        return parsed
+    raw = rule_decision.entities.get("event_profile")
+    if not isinstance(raw, dict):
+        return parsed.model_copy(update={"intent": "event_recommendation"})
+    base = EventProfile.model_validate(raw)
+    merged = merge_event_profiles(base, parsed.event_profile)
+    return parsed.model_copy(update={"intent": "event_recommendation", "event_profile": merged})
+
+
 def parsed_from_rules(
     message: str,
     rule_decision: IntentDecision,
@@ -120,6 +136,12 @@ def parsed_from_rules(
         elif n:
             nutrients = [n]
 
+    ev: EventProfile | None = None
+    if rule_decision.intent == "event_recommendation":
+        raw_ep = rule_decision.entities.get("event_profile")
+        if isinstance(raw_ep, dict):
+            ev = EventProfile.model_validate(raw_ep)
+
     return ParsedUserRequest(
         intent=rule_decision.intent,  # type: ignore[arg-type]
         confidence=1.0,
@@ -129,6 +151,7 @@ def parsed_from_rules(
         recipe_title_query=entities.get("recipe_title_query"),
         target_ingredient=entities.get("target_ingredient"),
         nutrients=nutrients,
+        event_profile=ev,
         requires_clarification=False,
         clarification=None,
     )
@@ -230,6 +253,7 @@ class LLMQueryParser:
             {
                 "last_recipe_results": conversation_snapshot.last_recipe_results,
                 "selected_recipe_id": conversation_snapshot.selected_recipe_id,
+                "last_event_profile": conversation_snapshot.last_event_profile,
             },
             ensure_ascii=False,
         )
@@ -308,6 +332,7 @@ class LLMQueryParser:
             )
 
         parsed = merge_parsed_constraints_with_rules(parsed, rule_constraints)
+        parsed = apply_rule_event_profile(parsed, rule_decision)
 
         postcheck_passed: bool | None = None
         postcheck_errors: list[str] = []
@@ -327,6 +352,7 @@ class LLMQueryParser:
                     postcheck_errors=postcheck_errors,
                 )
             parsed = pr.sanitized
+            parsed = apply_rule_event_profile(parsed, rule_decision)
 
         return QueryParserResult(
             parsed=parsed,

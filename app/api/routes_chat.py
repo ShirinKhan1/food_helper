@@ -10,7 +10,7 @@ from app.core.db import DatabaseUnavailableError
 from app.models.user import User
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.container import AppServices
-from app.services.conversation_state import ConversationAccessDenied
+from app.services.conversation_state import ConversationAccessDenied, UserMessageForkError
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 
@@ -41,11 +41,28 @@ def chat(
                 detail="Invalid conversation_id.",
             ) from exc
 
+    if request.edit_user_message_id is not None:
+        if request.edit_user_message_id < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="edit_user_message_id must be a positive integer.",
+            )
+        if request.conversation_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="conversation_id is required when edit_user_message_id is set.",
+            )
+
     user_id = current_user.id if current_user else None
     payload = request.model_copy(update={"message": message})
 
     try:
         return services.chat_pipeline.handle_chat(payload, current_user_id=user_id)
+    except UserMessageForkError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except ConversationAccessDenied as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

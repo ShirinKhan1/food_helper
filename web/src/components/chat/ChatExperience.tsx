@@ -21,6 +21,7 @@ import { RecipeCard } from "@/components/chat/RecipeCard";
 import { RecipeDetailModal } from "@/components/chat/RecipeDetailModal";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { Textarea } from "@/components/ui/Textarea";
 import { useUiStore } from "@/stores/uiStore";
 
 export type ChatUiMessage = {
@@ -29,6 +30,8 @@ export type ChatUiMessage = {
   content: string;
   response?: ChatResponsePayload;
   status?: "pending" | "success" | "error";
+  /** DB id from server; required to edit a sent user message */
+  serverMessageId?: number;
 };
 
 const EXAMPLES = [
@@ -90,6 +93,7 @@ export function ChatExperience({ conversationIdFromUrl = null }: Props) {
             role: m.role,
             content: m.content,
             status: "success" as const,
+            serverMessageId: m.id,
           })),
         );
         loadedChatRef.current = conversationIdFromUrl;
@@ -106,7 +110,7 @@ export function ChatExperience({ conversationIdFromUrl = null }: Props) {
   const activeChatId = conversationIdFromUrl ?? conversationId;
 
   const sendWithText = useCallback(
-    async (rawText: string) => {
+    async (rawText: string, opts?: { editUserMessageId?: number }) => {
       const text = rawText.trim();
       if (!text) {
         setInputError("Введите сообщение");
@@ -114,6 +118,7 @@ export function ChatExperience({ conversationIdFromUrl = null }: Props) {
       }
       setInputError(null);
       setSending(true);
+      const editId = opts?.editUserMessageId;
       const userMsg: ChatUiMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -127,39 +132,61 @@ export function ChatExperience({ conversationIdFromUrl = null }: Props) {
         content: "",
         status: "pending",
       };
-      setMessages((prev) => [...prev, userMsg, pendingAssistant]);
+      setMessages((prev) => {
+        if (editId != null) {
+          const idx = prev.findIndex((m) => m.serverMessageId === editId);
+          if (idx >= 0) return [...prev.slice(0, idx), userMsg, pendingAssistant];
+        }
+        return [...prev, userMsg, pendingAssistant];
+      });
       if (!conversationIdFromUrl) setDraft("");
       try {
         const res = await sendChatMessage({
-          conversation_id: conversationId,
+          conversation_id: conversationIdFromUrl ?? conversationId,
           message: text,
           options: { top_k: 5 },
+          ...(editId != null ? { edit_user_message_id: editId } : {}),
         });
         setConversationId(res.conversation_id);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pendingId
-              ? {
-                  ...m,
-                  content: res.answer,
-                  response: res,
-                  status: "success",
-                }
-              : m,
-          ),
-        );
+        setMessages((prev) => {
+          const pi = prev.findIndex((m) => m.id === pendingId);
+          return prev.map((m, i) => {
+            if (m.id === pendingId) {
+              return {
+                ...m,
+                content: res.answer,
+                response: res,
+                status: "success" as const,
+                serverMessageId: res.assistant_message_id ?? undefined,
+              };
+            }
+            if (pi >= 0 && i === pi - 1 && m.role === "user") {
+              return {
+                ...m,
+                serverMessageId: res.user_message_id ?? m.serverMessageId,
+              };
+            }
+            return m;
+          });
+        });
         setDraft("");
         if (authed) await qc.invalidateQueries({ queryKey: ["chats"] });
       } catch (e) {
         const msg =
           e instanceof ApiRequestError
-            ? e.status >= 500
+            ? e.status === 400
               ? (() => {
                   const d = e.message?.trim();
                   if (d && d !== "Request failed") return d;
-                  return "Сервис временно недоступен (ошибка сервера). Проверьте логи API и что БД/Ollama доступны.";
+                  return "Запрос отклонён. Проверьте текст и параметры.";
                 })()
-              : "Не получилось получить ответ. Попробуйте еще раз."
+              : e.status >= 500
+                ? (() => {
+                    const d = e.message?.trim();
+                    if (d && d !== "Request failed") return d;
+                    return "Сервис временно недоступен (ошибка сервера). Проверьте логи API и что БД/Ollama доступны.";
+                  })()
+                : "Не получилось получить ответ. Попробуйте еще раз."
             : "Не удалось связаться с API. Запустите backend на :8000 или задайте NEXT_PUBLIC_API_BASE_URL / API_PROXY_TARGET (см. README).";
         setMessages((prev) =>
           prev.map((m) =>
@@ -305,6 +332,7 @@ export function ChatExperience({ conversationIdFromUrl = null }: Props) {
                     sending={sending}
                     onRecipeDetails={setRecipeModalId}
                     onClarificationPick={(t) => void sendWithText(t)}
+                    onEditUserMessage={(sid, newText) => void sendWithText(newText, { editUserMessageId: sid })}
                   />
                 ))}
               </div>
@@ -329,13 +357,24 @@ function MessageBubble({
   sending,
   onRecipeDetails,
   onClarificationPick,
+  onEditUserMessage,
 }: {
   message: ChatUiMessage;
   sending: boolean;
   onRecipeDetails: (id: number) => void;
   onClarificationPick: (t: string) => void;
+  onEditUserMessage?: (serverMessageId: number, newText: string) => void;
 }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [editText, setEditText] = useState("");
   const isUser = message.role === "user";
+  const canEditUser =
+    isUser &&
+    message.status === "success" &&
+    message.serverMessageId != null &&
+    onEditUserMessage &&
+    !sending;
+
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
@@ -352,8 +391,60 @@ function MessageBubble({
             <Spinner />
             Food Helper подбирает рецепты…
           </div>
+        ) : isUser && editOpen ? (
+          <div className="flex min-w-[min(100%,16rem)] flex-col gap-2">
+            <Textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              rows={3}
+              className="border-emerald-900/30 bg-white text-neutral-900"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="!px-2 text-xs text-white hover:bg-white/10"
+                disabled={sending}
+                onClick={() => {
+                  setEditOpen(false);
+                  setEditText("");
+                }}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                className="!px-2 text-xs"
+                disabled={sending || !editText.trim()}
+                onClick={() => {
+                  const t = editText.trim();
+                  if (!t || message.serverMessageId == null) return;
+                  onEditUserMessage?.(message.serverMessageId, t);
+                  setEditOpen(false);
+                  setEditText("");
+                }}
+              >
+                Отправить
+              </Button>
+            </div>
+          </div>
         ) : (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <>
+            <p className="whitespace-pre-wrap">{message.content}</p>
+            {canEditUser ? (
+              <button
+                type="button"
+                className="mt-1 text-xs text-emerald-100/90 underline decoration-emerald-200/80 hover:text-white"
+                onClick={() => {
+                  setEditText(message.content);
+                  setEditOpen(true);
+                }}
+              >
+                Изменить
+              </button>
+            ) : null}
+          </>
         )}
         {!isUser && message.response && message.status === "success" ? (
           <div className="mt-3 space-y-3 border-t border-black/10 pt-3 dark:border-white/10">

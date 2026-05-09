@@ -58,6 +58,10 @@ class Settings:
     auth_cookie_name: str
     auth_cookie_secure: bool
     frontend_origin: str
+    event_recommendation_enabled: bool
+    event_candidate_multiplier: int
+    event_min_candidates: int
+    event_max_guests: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -139,4 +143,8 @@ class Settings:
             auth_cookie_name=os.getenv("AUTH_COOKIE_NAME", "food_helper_access_token"),
             auth_cookie_secure=os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true",
             frontend_origin=os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").strip(),
+            event_recommendation_enabled=os.getenv("EVENT_RECOMMENDATION_ENABLED", "true").lower() == "true",
+            event_candidate_multiplier=int(os.getenv("EVENT_CANDIDATE_MULTIPLIER", "8")),
+            event_min_candidates=int(os.getenv("EVENT_MIN_CANDIDATES", "40")),
+            event_max_guests=int(os.getenv("EVENT_MAX_GUESTS", "30")),
         )

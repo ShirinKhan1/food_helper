@@ -16,6 +16,10 @@ class ConversationAccessDenied(Exception):
     """Raised when the caller cannot use this conversation (maps to HTTP 404)."""
 
 
+class UserMessageForkError(Exception):
+    """Invalid edit_user_message_id or message is not a user row in this conversation."""
+
+
 def _derive_title_from_message(content: str, *, max_len: int = 60) -> str:
     one_line = " ".join(content.split())
     if len(one_line) <= max_len:
@@ -28,6 +32,7 @@ class ConversationSnapshot:
     conversation_id: str
     last_recipe_results: list[int] = field(default_factory=list)
     selected_recipe_id: int | None = None
+    last_event_profile: dict[str, Any] | None = None
     pending_clarification: PendingClarification | None = None
 
 
@@ -108,16 +113,97 @@ class ConversationStateService:
                 )
         return cid
 
-    def append_message(self, conversation_id: str, *, role: str, content: str) -> None:
+    def export_state_json(self, conversation_id: str) -> dict[str, Any]:
+        """Full `conversation_state.state` JSON for persisting on assistant rows."""
+        return dict(self._load_state_dict(conversation_id))
+
+    def fork_at_user_message(self, conversation_id: str, user_message_id: int) -> None:
         with self._db.connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, role
+                    FROM chat_messages
+                    WHERE id = %s AND conversation_id = %s::uuid
+                    """,
+                    (user_message_id, conversation_id),
+                )
+                row = cur.fetchone()
+                if row is None or str(row.get("role") or "") != "user":
+                    raise UserMessageForkError("User message not found in this conversation.")
+                cur.execute(
+                    """
+                    SELECT state_after_turn
+                    FROM chat_messages
+                    WHERE conversation_id = %s::uuid AND role = 'assistant' AND id < %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (conversation_id, user_message_id),
+                )
+                prev = cur.fetchone()
+                raw_snap = prev.get("state_after_turn") if prev else None
+                if isinstance(raw_snap, dict):
+                    restored = dict(raw_snap)
+                else:
+                    restored = {}
+                cur.execute(
+                    """
+                    DELETE FROM chat_messages
+                    WHERE conversation_id = %s::uuid AND id >= %s
+                    """,
+                    (conversation_id, user_message_id),
+                )
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO chat_messages (conversation_id, role, content)
-                    VALUES (%s::uuid, %s, %s)
+                    INSERT INTO conversation_state (conversation_id, state)
+                    VALUES (%s::uuid, %s)
+                    ON CONFLICT (conversation_id) DO UPDATE
+                    SET state = EXCLUDED.state, updated_at = now()
                     """,
-                    (conversation_id, role, content),
+                    (conversation_id, Json(restored)),
                 )
+                cur.execute(
+                    "UPDATE chat_sessions SET updated_at = now() WHERE conversation_id = %s::uuid",
+                    (conversation_id,),
+                )
+
+    def append_message(
+        self,
+        conversation_id: str,
+        *,
+        role: str,
+        content: str,
+        state_after_turn: dict[str, Any] | None = None,
+    ) -> int:
+        with self._db.connection() as conn:
+            with conn.cursor() as cur:
+                if role == "assistant":
+                    cur.execute(
+                        """
+                        INSERT INTO chat_messages (conversation_id, role, content, state_after_turn)
+                        VALUES (%s::uuid, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            conversation_id,
+                            role,
+                            content,
+                            Json(state_after_turn) if state_after_turn is not None else None,
+                        ),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO chat_messages (conversation_id, role, content)
+                        VALUES (%s::uuid, %s, %s)
+                        RETURNING id
+                        """,
+                        (conversation_id, role, content),
+                    )
+                inserted = cur.fetchone()
+                msg_id = int(inserted[0]) if inserted else 0
                 cur.execute(
                     "UPDATE chat_sessions SET updated_at = now() WHERE conversation_id = %s::uuid",
                     (conversation_id,),
@@ -132,6 +218,7 @@ class ConversationStateService:
                         """,
                         (title, conversation_id),
                     )
+        return msg_id
 
     def _load_state_dict(self, conversation_id: str) -> dict[str, Any]:
         with self._db.connection() as conn:
@@ -170,12 +257,15 @@ class ConversationStateService:
                 pending = PendingClarification.model_validate(raw_pending)
             except Exception:
                 pending = None
+        raw_ep = state.get("last_event_profile")
+        last_event_profile = raw_ep if isinstance(raw_ep, dict) else None
         return ConversationSnapshot(
             conversation_id=conversation_id,
             last_recipe_results=[
                 int(item) for item in state.get("last_recipe_results", []) if item is not None
             ],
             selected_recipe_id=state.get("selected_recipe_id"),
+            last_event_profile=last_event_profile,
             pending_clarification=pending,
         )
 
@@ -185,12 +275,18 @@ class ConversationStateService:
         *,
         last_recipe_results: list[int] | None = None,
         selected_recipe_id: int | None | object = _UNSET,
+        last_event_profile: dict[str, Any] | None | object = _UNSET,
     ) -> None:
         state = self._load_state_dict(conversation_id)
         if last_recipe_results is not None:
             state["last_recipe_results"] = last_recipe_results
         if selected_recipe_id is not _UNSET:
             state["selected_recipe_id"] = selected_recipe_id
+        if last_event_profile is not _UNSET:
+            if last_event_profile is None:
+                state.pop("last_event_profile", None)
+            else:
+                state["last_event_profile"] = last_event_profile
         self._write_state_dict(conversation_id, state)
 
     def get_pending_clarification(self, conversation_id: str) -> PendingClarification | None:

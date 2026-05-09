@@ -20,6 +20,8 @@ def _intent_routing(intent: ParserIntent) -> tuple[str, bool, bool, bool, bool, 
         return "sql", True, True, False, True, False
     if intent == "recipe_details":
         return "conversation_recipe_fetch", True, True, False, True, False
+    if intent == "event_recommendation":
+        return "event_menu_recommendation", False, False, True, True, False
     if intent in {"search_recipes", "recommend_recipes", "allergy_or_exclusion"}:
         return "hybrid_search", False, False, True, True, False
     if intent == "fallback":
@@ -32,6 +34,8 @@ def _resolve_pipeline_intent(
     rule_decision: IntentDecision,
     threshold: float,
 ) -> ParserIntent:
+    if rule_decision.intent == "event_recommendation":
+        return "event_recommendation"  # type: ignore[return-value]
     if parsed.confidence < threshold:
         return rule_decision.intent  # type: ignore[return-value]
     if rule_decision.intent == "fallback":
@@ -47,6 +51,9 @@ def _build_entities(parsed: ParsedUserRequest, rule_decision: IntentDecision) ->
         entities["recipe_title_query"] = parsed.recipe_title_query
     if parsed.target_ingredient is not None:
         entities["target_ingredient"] = parsed.target_ingredient
+
+    if parsed.event_profile is not None:
+        entities["event_profile"] = parsed.event_profile.model_dump(mode="json", exclude_none=True)
 
     nuts = list(parsed.nutrients) if parsed.nutrients else list(entities.get("nutrients") or [])
     entities["nutrients"] = nuts

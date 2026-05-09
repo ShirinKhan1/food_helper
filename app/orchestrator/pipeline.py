@@ -9,15 +9,21 @@ LOGGER = logging.getLogger(__name__)
 
 from app.core.config import Settings
 from app.orchestrator.clarification import ClarificationManager, PendingClarification
+from app.orchestrator.dialog_follow_up import apply_follow_up_context
 from app.orchestrator.intent_router import IntentRouter
 from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
 from app.orchestrator.query_constraints import extract_query_constraints
+from app.orchestrator.event_extractor import extract_event_profile
+from app.schemas.event import EventMenuGroup, EventProfile
 from app.schemas.chat import ChatDebugInfo, ChatOptions, ChatRequest, ChatResponse, IntentDecision
 from app.schemas.parser import ClarificationRequest, ParsedUserRequest
 from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceInfo, SubstitutionOption
 from app.schemas.search import QueryConstraints
-from app.services.answer_generator import AnswerGenerator
+from app.services.event_ranker import EventRanker
+from app.services.event_search_query import build_event_search_query
+from app.services.menu_composer import MenuComposer
 from app.services.conversation_state import ConversationStateService
+from app.services.answer_generator import AnswerGenerator
 from app.services.llm.query_parser import LLMQueryParser
 from app.services.llm.result import AnswerGenerationResult
 from app.services.nutrition import NutritionService
@@ -67,6 +73,8 @@ class ChatPipeline:
         self._query_parser = query_parser
         self._parsed_request_adapter = parsed_request_adapter
         self._clarification_manager = clarification_manager
+        self._event_ranker = EventRanker()
+        self._menu_composer = MenuComposer()
 
     def _chat_debug_log(self, options: ChatOptions, msg: str, *args: object) -> None:
         if options.include_debug:
@@ -95,12 +103,26 @@ class ChatPipeline:
             llm_result.postcheck_passed,
         )
 
+    def _append_assistant_with_snapshot(self, conversation_id: str, content: str) -> int:
+        snap = self._conversation_state_service.export_state_json(conversation_id)
+        return self._conversation_state_service.append_message(
+            conversation_id,
+            role="assistant",
+            content=content,
+            state_after_turn=snap,
+        )
+
     def handle_chat(self, request: ChatRequest, *, current_user_id: UUID | None = None) -> ChatResponse:
         conversation_id = self._conversation_state_service.prepare_conversation(
             request.conversation_id,
             current_user_id,
         )
-        self._conversation_state_service.append_message(
+        if request.edit_user_message_id is not None:
+            self._conversation_state_service.fork_at_user_message(
+                conversation_id,
+                request.edit_user_message_id,
+            )
+        user_message_id = self._conversation_state_service.append_message(
             conversation_id,
             role="user",
             content=request.message,
@@ -148,13 +170,13 @@ class ChatPipeline:
                         decision=self._router.decide(request.message),
                         parser_debug=self._parser_debug_dict(parser_result),
                     ),
+                    user_message_id=user_message_id,
                 )
-                self._conversation_state_service.append_message(
+                assistant_message_id = self._append_assistant_with_snapshot(
                     conversation_id,
-                    role="assistant",
-                    content=response.answer,
+                    response.answer,
                 )
-                return response
+                return response.model_copy(update={"assistant_message_id": assistant_message_id})
             if resolved.abandon_pending:
                 self._conversation_state_service.clear_pending_clarification(conversation_id)
             if resolved.resolved and resolved.parsed is not None:
@@ -219,13 +241,13 @@ class ChatPipeline:
                     decision=rule_decision,
                     parser_debug=self._parser_debug_dict(parser_result),
                 ),
+                user_message_id=user_message_id,
             )
-            self._conversation_state_service.append_message(
+            assistant_message_id = self._append_assistant_with_snapshot(
                 conversation_id,
-                role="assistant",
-                content=response.answer,
+                response.answer,
             )
-            return response
+            return response.model_copy(update={"assistant_message_id": assistant_message_id})
 
         decision, constraints, message_for_search = self._parsed_request_adapter.to_pipeline_inputs(
             parsed=parsed,
@@ -233,6 +255,20 @@ class ChatPipeline:
             rule_constraints=rule_constraints,
             message=request.message,
         )
+        snapshot = self._conversation_state_service.get_snapshot(conversation_id)
+        decision, constraints, message_for_search, exclude_ids, clear_last_event_profile = (
+            apply_follow_up_context(
+                message=request.message,
+                snapshot=snapshot,
+                decision=decision,
+                constraints=constraints,
+                message_for_search=message_for_search,
+                event_recommendation_enabled=self._settings.event_recommendation_enabled,
+            )
+        )
+        if clear_last_event_profile:
+            self._conversation_state_service.update_snapshot(conversation_id, last_event_profile=None)
+        recent_dialog = self._recent_dialog_payload(recent_messages)
         warnings = self._warnings_from_constraints(constraints)
         self._chat_debug_log(
             request.options,
@@ -254,12 +290,13 @@ class ChatPipeline:
             decision=decision,
             warnings=warnings,
             parser_debug=self._parser_debug_dict(parser_result),
+            exclude_recipe_ids=exclude_ids,
+            recent_dialog=recent_dialog,
         )
         self._conversation_state_service.clear_pending_clarification(conversation_id)
-        self._conversation_state_service.append_message(
+        assistant_message_id = self._append_assistant_with_snapshot(
             conversation_id,
-            role="assistant",
-            content=response.answer,
+            response.answer,
         )
         self._chat_debug_log(
             request.options,
@@ -269,7 +306,12 @@ class ChatPipeline:
             len(response.answer),
             len(response.recipes),
         )
-        return response
+        return response.model_copy(
+            update={
+                "user_message_id": user_message_id,
+                "assistant_message_id": assistant_message_id,
+            },
+        )
 
     def _pending_to_clarification_request(self, pending: PendingClarification) -> ClarificationRequest:
         return ClarificationRequest(
@@ -278,6 +320,17 @@ class ChatPipeline:
             expected_fields=pending.expected_fields,
             options=pending.options,
         )
+
+    def _recent_dialog_payload(self, recent_messages: list[tuple[str, str]]) -> list[dict[str, str]]:
+        limit = self._settings.query_parser_recent_messages_limit
+        cap = 500
+        out: list[dict[str, str]] = []
+        for role, content in recent_messages[-limit:]:
+            text = (content or "").strip()
+            if len(text) > cap:
+                text = text[: cap - 1] + "…"
+            out.append({"role": role, "content": text})
+        return out
 
     def _parser_debug_dict(self, parser_result) -> dict | None:
         if parser_result is None:
@@ -288,6 +341,9 @@ class ChatPipeline:
             "confidence": parsed.confidence,
             "requires_clarification": parsed.requires_clarification,
             "constraints": parsed.constraints.model_dump(),
+            "event_profile": parsed.event_profile.model_dump(mode="json", exclude_none=True)
+            if parsed.event_profile
+            else None,
         }
         return {
             "mode": self._settings.query_parser_mode,
@@ -309,6 +365,8 @@ class ChatPipeline:
         decision: IntentDecision,
         warnings: list[str],
         parser_debug: dict | None = None,
+        exclude_recipe_ids: frozenset[int] | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
     ) -> ChatResponse:
         self._chat_debug_log(
             options,
@@ -316,11 +374,25 @@ class ChatPipeline:
             decision.intent,
             decision.route,
         )
+        if decision.intent == "event_recommendation":
+            return self._dispatch_event_recommendation(
+                conversation_id=conversation_id,
+                message=message,
+                options=options,
+                constraints=constraints,
+                decision=decision,
+                warnings=warnings,
+                parser_debug=parser_debug,
+                exclude_recipe_ids=exclude_recipe_ids,
+                recent_dialog=recent_dialog,
+            )
+
         if decision.intent in {"search_recipes", "recommend_recipes", "allergy_or_exclusion"}:
             execution = self._search_service.search(
                 message,
                 constraints=constraints,
                 top_k=options.top_k,
+                exclude_recipe_ids=exclude_recipe_ids,
             )
             self._chat_debug_search(options, "recipe search", execution)
             recipes = self._rows_to_cards(execution.final_results)
@@ -328,6 +400,7 @@ class ChatPipeline:
                 conversation_id,
                 last_recipe_results=[card.recipe_id for card in recipes],
                 selected_recipe_id=None,
+                last_event_profile=None,
             )
             fallback_answer = self._render_recipe_list_answer(decision.intent, recipes)
             llm_result = self._answer_generator.generate_recipe_list_answer(
@@ -338,6 +411,7 @@ class ChatPipeline:
                 warnings=warnings,
                 constraints=constraints,
                 sources=self._sources_from_cards(recipes),
+                recent_dialog=recent_dialog,
             )
             self._chat_debug_llm(options, llm_result)
             return ChatResponse(
@@ -366,6 +440,7 @@ class ChatPipeline:
                         message,
                         constraints=constraints,
                         top_k=options.top_k,
+                        exclude_recipe_ids=exclude_recipe_ids,
                     )
                     self._chat_debug_search(options, "nutrition candidate search", execution)
                     recipes = self._rows_to_cards(execution.final_results)
@@ -386,6 +461,7 @@ class ChatPipeline:
                         warnings=warnings,
                         constraints=constraints,
                         sources=self._sources_from_cards(recipes),
+                        recent_dialog=recent_dialog,
                     )
                     self._chat_debug_llm(options, llm_result)
                     return ChatResponse(
@@ -427,6 +503,7 @@ class ChatPipeline:
                 warnings=warnings,
                 constraints=constraints,
                 sources=[self._source_from_detail(detail)],
+                recent_dialog=recent_dialog,
             )
             self._chat_debug_llm(options, llm_result)
             self._conversation_state_service.update_snapshot(
@@ -477,6 +554,7 @@ class ChatPipeline:
                 warnings=warnings,
                 constraints=constraints,
                 sources=[self._source_from_detail(detail)],
+                recent_dialog=recent_dialog,
             )
             self._chat_debug_llm(options, llm_result)
             return ChatResponse(
@@ -507,6 +585,7 @@ class ChatPipeline:
                 substitutions=substitution.options,
                 warnings=warnings,
                 constraints=constraints,
+                recent_dialog=recent_dialog,
             )
             self._chat_debug_llm(options, llm_result)
             return ChatResponse(
@@ -584,6 +663,7 @@ class ChatPipeline:
                 substitutions=substitution.options,
                 warnings=warnings,
                 constraints=constraints,
+                recent_dialog=recent_dialog,
             )
             self._chat_debug_llm(options, llm_result)
             return ChatResponse(
@@ -637,6 +717,7 @@ class ChatPipeline:
                 base_rows=similar_rows,
                 constraints=constraints,
                 top_k=options.top_k,
+                exclude_recipe_ids=exclude_recipe_ids,
             )
             self._chat_debug_search(options, "similar_recipes rerank", execution)
             recipes = self._rows_to_cards(execution.final_results)
@@ -655,6 +736,7 @@ class ChatPipeline:
                 warnings=warnings,
                 constraints=constraints,
                 sources=self._sources_from_cards(recipes),
+                recent_dialog=recent_dialog,
             )
             self._chat_debug_llm(options, llm_result)
             return ChatResponse(
@@ -726,6 +808,186 @@ class ChatPipeline:
                 decision=decision,
                 llm_result=llm_result,
                 parser_debug=parser_debug,
+            ),
+        )
+
+    def _renumber_event_menu(
+        self, menu: list[EventMenuGroup]
+    ) -> tuple[list[EventMenuGroup], list[RecipeCard]]:
+        flat: list[RecipeCard] = []
+        n = 1
+        new_groups: list[EventMenuGroup] = []
+        for group in menu:
+            cards = [c.model_copy(update={"rank": n + i}) for i, c in enumerate(group.recipes)]
+            n += len(cards)
+            flat.extend(cards)
+            new_groups.append(group.model_copy(update={"recipes": cards}))
+        return new_groups, flat
+
+    def _render_event_menu_fallback(
+        self,
+        *,
+        event_profile: EventProfile,
+        event_menu: list[EventMenuGroup],
+        reasons_by_id: dict[int, list[str]],
+        partial: bool,
+        empty: bool,
+    ) -> str:
+        if empty:
+            return (
+                "Я не нашел подходящих рецептов под это событие с текущими ограничениями. "
+                "Можно ослабить условия: убрать часть исключений, увеличить время приготовления "
+                "или выбрать другой формат меню."
+            )
+        lines: list[str] = []
+        label = event_profile.event_type or "событие"
+        guests = event_profile.guests_count
+        if guests:
+            lines.append(f"Я подобрал варианты меню на {guests} человек ({label}).")
+        else:
+            lines.append(f"Я подобрал варианты меню под ваш запрос ({label}).")
+        if partial:
+            lines.append(
+                "Я нашел несколько рецептов, которые могут подойти под событие, "
+                "но не смог собрать полное меню по всем разделам."
+            )
+        for group in event_menu:
+            lines.append(f"\n{group.title}:")
+            for card in group.recipes:
+                why_list = reasons_by_id.get(card.recipe_id, [])
+                why = why_list[0] if why_list else "может подойти; проверьте состав и порции в карточке рецепта"
+                lines.append(f"{card.rank}. {card.title}\n   Почему подходит: {why}")
+        lines.append(
+            "\nПроверьте состав конкретных продуктов и возможные следы аллергенов на упаковке."
+        )
+        return "\n".join(lines).strip()
+
+    def _dispatch_event_recommendation(
+        self,
+        *,
+        conversation_id: str,
+        message: str,
+        options: ChatOptions,
+        constraints: QueryConstraints,
+        decision: IntentDecision,
+        warnings: list[str],
+        parser_debug: dict | None = None,
+        exclude_recipe_ids: frozenset[int] | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
+    ) -> ChatResponse:
+        raw_ep = decision.entities.get("event_profile")
+        event_profile: EventProfile | None = None
+        if isinstance(raw_ep, dict) and raw_ep:
+            try:
+                event_profile = EventProfile.model_validate(raw_ep)
+            except Exception:
+                event_profile = None
+        if event_profile is None or not event_profile.event_type:
+            extracted = extract_event_profile(message, max_guests=self._settings.event_max_guests)
+            if extracted:
+                event_profile = extracted
+        if event_profile is None:
+            event_profile = EventProfile(
+                event_type="generic_event",
+                meal_roles=["main", "dessert"],
+                vibe=[],
+            )
+
+        if event_profile.event_type == "generic_event" and not event_profile.meal_roles:
+            event_profile = event_profile.model_copy(update={"meal_roles": ["main", "dessert"]})
+
+        search_message = build_event_search_query(message, event_profile)
+        mult = max(1, self._settings.event_candidate_multiplier)
+        candidate_k = max(options.top_k * mult, self._settings.event_min_candidates)
+
+        execution = self._search_service.search(
+            search_message,
+            constraints=constraints,
+            top_k=candidate_k,
+            exclude_recipe_ids=exclude_recipe_ids,
+        )
+        self._chat_debug_search(options, "event recommendation search", execution)
+        pool = [dict(r) for r in execution.final_results]
+        ranked = self._event_ranker.rank(
+            rows=pool,
+            event_profile=event_profile,
+            constraints=constraints,
+            top_k=options.top_k,
+        )
+        event_menu = self._menu_composer.compose(
+            ranked_rows=ranked,
+            event_profile=event_profile,
+            top_k=options.top_k,
+            row_to_card=self._recipe_repository.row_to_recipe_card,
+        )
+        event_menu, flat_cards = self._renumber_event_menu(event_menu)
+        self._conversation_state_service.update_snapshot(
+            conversation_id,
+            last_recipe_results=[card.recipe_id for card in flat_cards],
+            selected_recipe_id=None,
+            last_event_profile=event_profile.model_dump(mode="json", exclude_none=True),
+        )
+        reasons_by_id = {int(r.get("id") or 0): r.get("event_reasons") or [] for r in ranked}
+        roles_needed = len(event_profile.meal_roles or [])
+        filled_roles = len(event_menu)
+        partial = bool(flat_cards and roles_needed > 0 and filled_roles < roles_needed)
+        fallback_answer = self._render_event_menu_fallback(
+            event_profile=event_profile,
+            event_menu=event_menu,
+            reasons_by_id=reasons_by_id,
+            partial=partial,
+            empty=not flat_cards,
+        )
+        llm_result = self._answer_generator.generate_event_menu_answer(
+            user_message=message,
+            fallback_answer=fallback_answer,
+            event_profile=event_profile,
+            event_menu=event_menu,
+            warnings=warnings,
+            recipes=flat_cards,
+            constraints=constraints,
+            sources=self._sources_from_cards(flat_cards),
+            recent_dialog=recent_dialog,
+        )
+        self._chat_debug_llm(options, llm_result)
+
+        event_debug = {
+            "event_profile": event_profile.model_dump(mode="json", exclude_none=True),
+            "event_ranker": {
+                "candidate_count": len(pool),
+                "ranked_count": len(ranked),
+            },
+            "ranked_preview": [
+                {
+                    "recipe_id": int(r.get("id") or 0),
+                    "title": r.get("title"),
+                    "event_score": r.get("event_score"),
+                    "event_roles": r.get("event_roles"),
+                    "event_reasons": r.get("event_reasons"),
+                    "matched_by": r.get("matched_by"),
+                }
+                for r in ranked[: min(20, len(ranked))]
+            ],
+        }
+
+        return ChatResponse(
+            conversation_id=conversation_id,
+            answer=llm_result.answer,
+            intent=decision.intent,
+            route=decision.route,
+            recipes=flat_cards,
+            event_profile=event_profile,
+            event_menu=event_menu,
+            warnings=warnings,
+            sources=self._sources_from_cards(flat_cards),
+            debug=self._build_debug(
+                options=options,
+                constraints=constraints,
+                decision=decision,
+                execution=execution,
+                llm_result=llm_result,
+                parser_debug=parser_debug,
+                event_recommendation=event_debug,
             ),
         )
 
@@ -976,6 +1238,7 @@ class ChatPipeline:
         execution=None,
         llm_result: AnswerGenerationResult | None = None,
         parser_debug: dict | None = None,
+        event_recommendation: dict | None = None,
     ) -> ChatDebugInfo | None:
         if not options.include_debug:
             return None
@@ -986,6 +1249,7 @@ class ChatPipeline:
             vector_results=self._simplify_rows(getattr(execution, "vector_results", [])),
             keyword_results=self._simplify_rows(getattr(execution, "keyword_results", [])),
             final_results=self._simplify_rows(getattr(execution, "final_results", [])),
+            event_recommendation=event_recommendation,
             llm=self._build_llm_debug(llm_result),
             parser=parser_debug,
         )

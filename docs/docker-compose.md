@@ -75,13 +75,31 @@ docker compose build loader
 
 ## Как перезапускать после изменений
 
-Код проекта монтируется в контейнеры как **`.:/app`**, поэтому правки `.py`, `.json`, тестов и большинства файлов приложения сразу видны внутри контейнеров. Но процесс Python сам себя не перезапускает.
+После `git pull` или любых правок в репозитории **обновления в работающем Docker не применяются сами**: нужно перезапустить соответствующие сервисы (или пересобрать образ и пересоздать контейнер — см. ниже). Исключение — разовые команды `docker compose exec ...`, где каждый запуск поднимает новый процесс и уже читает текущие файлы на диске.
 
-Если менял код API:
+Код бэкенда и общих файлов монтируется в контейнеры как **`.:/app`**, поэтому свежие `.py` и данные на томе видны сразу, но **uvicorn / долгоживущий Python** нужно перезапустить, чтобы поднять приложение заново.
+
+### Быстро применить обновления кода (без пересборки образа)
+
+- только API:
 
 ```powershell
 docker compose restart api
 ```
+
+- только веб (Next.js), если менял `frontend/` или то, что попадает в образ `web` при следующей сборке — для **смонтированного** dev-кода часто достаточно рестарта; если менял `Dockerfile.web` или зависимости фронта — смотри ниже `build` + `--force-recreate`:
+
+```powershell
+docker compose restart web
+```
+
+- API и веб вместе (типично после обновления бэкенда и UI):
+
+```powershell
+docker compose restart api web
+```
+
+Ollama и Postgres для обычных правок приложения **перезапускать не обязательно**. Если менял только модель/настройки Ollama — достаточно `docker compose restart ollama`.
 
 Если менял код, которым пользуешься через долгоживущий `embed`-контейнер, чаще всего ничего пересобирать не надо. Для команд через `docker compose exec embed ...` новый запуск Python увидит свежий код. Если внутри `embed` был запущен долгий процесс, перезапусти контейнер:
 
@@ -92,7 +110,7 @@ docker compose --profile embed restart embed
 Если менял `docker-compose.yaml`, переменные окружения, порты или список volume, пересоздай контейнеры:
 
 ```powershell
-docker compose up -d --force-recreate api
+docker compose up -d --force-recreate api web
 docker compose --profile embed up -d --force-recreate embed
 ```
 
@@ -117,7 +135,7 @@ docker compose --profile embed down -v
 docker compose up -d db
 ```
 
-Короткое правило: код — `restart`, зависимости/Dockerfile — `build` + `up --force-recreate`, схема БД из init-файлов — пересоздание тома `pgdata`.
+Короткое правило: код — `restart api` (и при необходимости `web`), зависимости/Dockerfile — `build` + `up --force-recreate`, схема БД из init-файлов — пересоздание тома `pgdata`.
 
 ## Поднять только БД
 
@@ -245,6 +263,41 @@ docker compose --profile embed run --rm embed python scripts/embedding/embed_rec
 
 Первый build образов может долго качать PyTorch и модель. При запуске контейнеров используется локальная модель из `/opt/models/intfloat-multilingual-e5-small`.
 
+## Включить контейнеры снова и выключить
+
+Команды выполняй из **корня репозитория** (где лежит `docker-compose.yaml`).
+
+### Выключить
+
+- Основной стек (`db`, `ollama`, `api`, `web` и другие сервисы **без** профиля): `docker compose down`.
+- Если поднимал **`embed`**, укажи тот же профиль — иначе контейнер **`food_helper`** может остаться работать: `docker compose --profile embed down`.
+- Удаление **томов** вместе с контейнерами (`-v`, в т.ч. потеря данных в **`pgdata`**) — см. раздел «Остановка и тома» ниже.
+
+### Включить снова
+
+После обычного `down` **без** `-v` тома **`pgdata`** и **`ollama_data`** сохраняются: данные Postgres и скачанные модели Ollama остаются. Поднимай стек теми же командами, что и при первом запуске.
+
+Типичный полный стек (БД, Ollama, API, веб):
+
+```powershell
+docker compose up -d db ollama api web
+```
+
+Если нужен долгоживущий контейнер **`embed`** для `exec` и pytest — после `db`:
+
+```powershell
+docker compose --profile embed up -d embed
+```
+
+Если контейнеры только **останавливали** без удаления (`docker compose stop`), снова запустить:
+
+```powershell
+docker compose start
+docker compose --profile embed start embed
+```
+
+Либо тем же `docker compose up -d ...` / `docker compose --profile embed up -d embed` — Compose поднимет уже созданные контейнеры.
+
 ## Остановка и тома
 
 Обычное выключение БД:
@@ -284,7 +337,7 @@ docker network inspect food_helper_default
 5. При необходимости: `docker compose --profile load run --rm loader`
 6. При необходимости: `docker compose --profile embed run --rm embed python scripts/embedding/embed_recipes.py --from-db --only-missing`
 7. `docker compose --profile embed up -d embed` — дальше работа через `docker compose exec embed ...` (в т.ч. pytest — см. раздел «Тесты (pytest)» ниже).
-8. Остановка: `docker compose --profile embed down` (и при необходимости `docker compose down` для `db/ollama/api`, если `embed` уже снят).
+8. Остановка: `docker compose --profile embed down` (и при необходимости `docker compose down` для `db/ollama/api/web`, если `embed` уже снят). Подробнее — раздел «Включить контейнеры снова и выключить» выше.
 
 ## Frontend и авторизация (MVP)
 
@@ -296,4 +349,4 @@ docker network inspect food_helper_default
 Get-Content db/migrations/manual_users_and_chat_sessions.sql | docker compose exec -T db psql -U food -d food_helper
 ```
 
-Фронтенд: каталог `web/`, образ `docker/Dockerfile.web`, сервис `web` в Compose. После `docker compose up -d web` откройте **http://localhost:3000/** (см. корневой [README.md](../README.md)).
+Фронтенд: каталог `web/`, образ `docker/Dockerfile.web`, сервис `web` в Compose. После `docker compose up -d web` откройте **http://localhost:3000/** (см. корневой [README.md](../README.md)). Архитектура чатового API и оркестрации описана в [architecture.md](architecture.md).

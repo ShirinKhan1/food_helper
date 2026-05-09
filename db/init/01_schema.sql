@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   conversation_id UUID NOT NULL REFERENCES chat_sessions(conversation_id) ON DELETE CASCADE,
   role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content         TEXT NOT NULL,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  state_after_turn JSONB
 );
 
 CREATE INDEX IF NOT EXISTS chat_messages_conversation_idx

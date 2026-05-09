@@ -70,9 +70,13 @@ def build_services(settings: Settings | None = None) -> AppServices:
     conversation_state_service = ConversationStateService(db)
     user_repository = UserRepository(db)
     chat_history_repository = ChatHistoryRepository(db)
-    intent_router = IntentRouter()
+    intent_router = IntentRouter(
+        event_recommendation_enabled=resolved_settings.event_recommendation_enabled,
+        event_max_guests=resolved_settings.event_max_guests,
+    )
     parser_postcheck = ParserPostcheck(
         max_question_chars=resolved_settings.clarification_max_question_chars,
+        event_max_guests=resolved_settings.event_max_guests,
     )
     if resolved_settings.llm_query_parser_enabled and resolved_settings.llm_query_parser_provider == "ollama":
         parser_llm_client = OllamaLLMClient(

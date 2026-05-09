@@ -16,14 +16,24 @@ class SearchService:
         self._embedding_service = embedding_service
         self._hybrid_search_service = hybrid_search_service
 
-    def search(self, message: str, *, constraints: QueryConstraints, top_k: int) -> HybridSearchExecution:
+    def search(
+        self,
+        message: str,
+        *,
+        constraints: QueryConstraints,
+        top_k: int,
+        candidate_k: int | None = None,
+        exclude_recipe_ids: frozenset[int] | set[int] | None = None,
+    ) -> HybridSearchExecution:
         normalized_query = prepare_search_text(message, skip_normalize=False)
         query_embedding = self._embedding_service.encode_query(normalized_query)
+        effective_k = candidate_k if candidate_k is not None else top_k
         return self._hybrid_search_service.run(
             normalized_query=normalized_query,
             query_embedding=query_embedding,
             constraints=constraints,
-            top_k=top_k,
+            top_k=effective_k,
+            exclude_recipe_ids=exclude_recipe_ids,
         )
 
     def similar_recipes(
@@ -33,10 +43,12 @@ class SearchService:
         base_rows: list[dict],
         constraints: QueryConstraints,
         top_k: int,
+        exclude_recipe_ids: frozenset[int] | set[int] | None = None,
     ) -> HybridSearchExecution:
         return self._hybrid_search_service.filter_similar(
             base_rows,
             normalized_query=normalized_query,
             constraints=constraints,
             top_k=top_k,
+            exclude_recipe_ids=exclude_recipe_ids,
         )

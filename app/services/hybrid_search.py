@@ -63,9 +63,13 @@ class HybridSearchService:
         query_embedding: list[float],
         constraints: QueryConstraints,
         top_k: int,
+        exclude_recipe_ids: frozenset[int] | set[int] | None = None,
     ) -> HybridSearchExecution:
-        vector_rows = self._vector_search.search(query_embedding, top_k=max(top_k * 3, top_k))
-        keyword_rows = self._keyword_search.search(normalized_query, top_k=max(top_k * 3, top_k))
+        excl: frozenset[int] = frozenset(exclude_recipe_ids or ())
+        pool_k = max(top_k * 3, top_k) + min(len(excl), 120)
+        pool_k = min(pool_k, 300)
+        vector_rows = self._vector_search.search(query_embedding, top_k=pool_k)
+        keyword_rows = self._keyword_search.search(normalized_query, top_k=pool_k)
 
         vector_scores = {
             int(row["id"]): float(row.get("similarity") or 0.0) for row in vector_rows
@@ -83,6 +87,8 @@ class HybridSearchService:
 
         ranked: list[dict[str, Any]] = []
         for rid, row in merged.items():
+            if rid in excl:
+                continue
             if not self._passes_filters(row, constraints):
                 continue
             rules_score = self._rules_score(row, normalized_query, constraints)
@@ -116,9 +122,14 @@ class HybridSearchService:
         normalized_query: str,
         constraints: QueryConstraints,
         top_k: int,
+        exclude_recipe_ids: frozenset[int] | set[int] | None = None,
     ) -> HybridSearchExecution:
+        excl: frozenset[int] = frozenset(exclude_recipe_ids or ())
         filtered: list[dict[str, Any]] = []
         for row in rows:
+            rid = int(row["id"])
+            if rid in excl:
+                continue
             if not self._passes_filters(row, constraints):
                 continue
             row = dict(row)

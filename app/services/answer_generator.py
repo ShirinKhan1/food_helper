@@ -5,7 +5,7 @@ import time
 
 import httpx
 
-from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceInfo, SubstitutionOption
+from app.schemas.event import EventMenuGroup, EventProfile
 from app.schemas.search import QueryConstraints
 from app.services.llm.base import LLMClient, LLMGenerateRequest
 from app.services.llm.context import LLMAnswerContext
@@ -19,6 +19,7 @@ LOGGER = logging.getLogger(__name__)
 AUTO_ALLOWLIST = {
     "search_recipes",
     "recommend_recipes",
+    "event_recommendation",
     "allergy_or_exclusion",
     "similar_recipes",
     "recipe_details",
@@ -78,6 +79,7 @@ class AnswerGenerator:
         warnings: list[str],
         constraints: QueryConstraints | None = None,
         sources: list[SourceInfo] | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
     ) -> AnswerGenerationResult:
         scenario = "similar_recipes" if intent == "similar_recipes" else "recipe_list"
         context = LLMAnswerContext(
@@ -87,6 +89,7 @@ class AnswerGenerator:
             recipes=recipes,
             warnings=warnings,
             sources=sources or [],
+            recent_dialog=recent_dialog,
         )
         return self._generate_or_fallback(
             scenario=scenario,
@@ -106,6 +109,7 @@ class AnswerGenerator:
         warnings: list[str],
         constraints: QueryConstraints | None = None,
         sources: list[SourceInfo] | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="recipe_detail",
@@ -114,6 +118,7 @@ class AnswerGenerator:
             recipe_detail=detail,
             warnings=warnings,
             sources=sources or [],
+            recent_dialog=recent_dialog,
         )
         return self._generate_or_fallback(
             scenario="recipe_detail",
@@ -134,6 +139,7 @@ class AnswerGenerator:
         warnings: list[str],
         constraints: QueryConstraints | None = None,
         sources: list[SourceInfo] | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="nutrition",
@@ -143,6 +149,7 @@ class AnswerGenerator:
             nutrition=nutrition,
             warnings=warnings,
             sources=sources or [],
+            recent_dialog=recent_dialog,
         )
         return self._generate_or_fallback(
             scenario="nutrition",
@@ -163,6 +170,7 @@ class AnswerGenerator:
         warnings: list[str],
         constraints: QueryConstraints | None = None,
         sources: list[SourceInfo] | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="nutrition_candidates",
@@ -171,6 +179,7 @@ class AnswerGenerator:
             recipes=recipes,
             warnings=warnings,
             sources=sources or [],
+            recent_dialog=recent_dialog,
         )
         return self._generate_or_fallback(
             scenario="nutrition_candidates",
@@ -190,6 +199,7 @@ class AnswerGenerator:
         substitutions: list[SubstitutionOption],
         warnings: list[str],
         constraints: QueryConstraints | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="ingredient_substitution",
@@ -198,6 +208,7 @@ class AnswerGenerator:
             recipe_detail=detail,
             substitutions=substitutions,
             warnings=warnings,
+            recent_dialog=recent_dialog,
         )
         return self._generate_or_fallback(
             scenario="ingredient_substitution",
@@ -216,6 +227,7 @@ class AnswerGenerator:
         substitutions: list[SubstitutionOption],
         warnings: list[str],
         constraints: QueryConstraints | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
     ) -> AnswerGenerationResult:
         context = LLMAnswerContext(
             scenario="general_substitution",
@@ -223,6 +235,7 @@ class AnswerGenerator:
             constraints=constraints,
             substitutions=substitutions,
             warnings=warnings,
+            recent_dialog=recent_dialog,
         )
         return self._generate_or_fallback(
             scenario="general_substitution",
@@ -273,6 +286,39 @@ class AnswerGenerator:
             fallback_answer=fallback_answer,
             context=context,
             allow_llm=False,
+        )
+
+    def generate_event_menu_answer(
+        self,
+        *,
+        user_message: str,
+        fallback_answer: str,
+        event_profile: EventProfile,
+        event_menu: list[EventMenuGroup],
+        warnings: list[str],
+        recipes: list[RecipeCard],
+        constraints: QueryConstraints | None = None,
+        sources: list[SourceInfo] | None = None,
+        recent_dialog: list[dict[str, str]] | None = None,
+    ) -> AnswerGenerationResult:
+        context = LLMAnswerContext(
+            scenario="event_menu",
+            user_message=user_message,
+            constraints=constraints,
+            recipes=recipes,
+            warnings=warnings,
+            sources=sources or [],
+            event_profile=event_profile.model_dump(mode="json", exclude_none=True),
+            event_menu=[g.model_dump(mode="json") for g in event_menu],
+            recent_dialog=recent_dialog,
+        )
+        return self._generate_or_fallback(
+            scenario="event_menu",
+            intent="event_recommendation",
+            user_message=user_message,
+            fallback_answer=fallback_answer,
+            context=context,
+            allow_llm=bool(recipes),
         )
 
     def _generate_or_fallback(

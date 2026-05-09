@@ -50,6 +50,9 @@ def build_user_prompt(context: LLMAnswerContext) -> str:
         "warnings": context.warnings,
         "sources": [item.model_dump(mode="json") for item in context.sources],
         "detail_mode": context.detail_mode,
+        "event_profile": context.event_profile,
+        "event_menu": context.event_menu,
+        "recent_dialog": context.recent_dialog,
     }
     return (
         "Контекст:\n"

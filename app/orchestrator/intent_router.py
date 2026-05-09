@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from app.orchestrator.event_extractor import extract_event_profile
 from app.orchestrator.query_constraints import extract_query_constraints
 from app.schemas.chat import IntentDecision
 
@@ -99,6 +100,15 @@ def _extract_recipe_title_query(message: str, *, nutrient: str | None) -> str | 
 
 
 class IntentRouter:
+    def __init__(
+        self,
+        *,
+        event_recommendation_enabled: bool = True,
+        event_max_guests: int = 30,
+    ) -> None:
+        self._event_enabled = event_recommendation_enabled
+        self._event_max_guests = event_max_guests
+
     def decide(self, message: str) -> IntentDecision:
         lowered = " ".join(message.lower().split())
         constraints = extract_query_constraints(lowered)
@@ -198,6 +208,23 @@ class IntentRouter:
                 needs_sql=True,
                 needs_llm=False,
             )
+
+        if self._event_enabled:
+            prof = extract_event_profile(message, max_guests=self._event_max_guests)
+            if prof is not None:
+                return IntentDecision(
+                    intent="event_recommendation",
+                    route="event_menu_recommendation",
+                    entities={
+                        **entities,
+                        "event_profile": prof.model_dump(mode="json", exclude_none=True),
+                    },
+                    needs_conversation_context=False,
+                    needs_recipe_fetch=False,
+                    needs_vector_search=True,
+                    needs_sql=True,
+                    needs_llm=False,
+                )
 
         if constraints.allergy_exclusions or (
             constraints.exclude_ingredients and any(token in lowered for token in ["что подойдет", "что можно", "подбери"])

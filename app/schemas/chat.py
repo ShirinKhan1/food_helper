@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.event import EventMenuGroup, EventProfile
 from app.schemas.parser import ClarificationRequest
 from app.schemas.recipe import NutritionInfo, RecipeCard, RecipeDetail, SourceInfo, SubstitutionOption
 from app.schemas.search import QueryConstraints
@@ -18,12 +19,14 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     message: str
     options: ChatOptions = Field(default_factory=ChatOptions)
+    edit_user_message_id: int | None = None
 
 
 class IntentDecision(BaseModel):
     intent: Literal[
         "search_recipes",
         "recommend_recipes",
+        "event_recommendation",
         "nutrition_question",
         "ingredient_substitution",
         "general_substitution",
@@ -38,6 +41,7 @@ class IntentDecision(BaseModel):
         "sql",
         "vector_search",
         "hybrid_search",
+        "event_menu_recommendation",
         "conversation_recipe_fetch",
         "conversation_history",
         "substitution",
@@ -59,6 +63,7 @@ class ChatDebugInfo(BaseModel):
     vector_results: list[dict] = Field(default_factory=list)
     keyword_results: list[dict] = Field(default_factory=list)
     final_results: list[dict] = Field(default_factory=list)
+    event_recommendation: dict | None = None
     llm: dict | None = None
     parser: dict | None = None
 
@@ -69,6 +74,8 @@ class ChatResponse(BaseModel):
     intent: str
     route: str
     recipes: list[RecipeCard] = Field(default_factory=list)
+    event_profile: EventProfile | None = None
+    event_menu: list[EventMenuGroup] = Field(default_factory=list)
     selected_recipe: RecipeDetail | None = None
     nutrition: NutritionInfo | None = None
     substitutions: list[SubstitutionOption] = Field(default_factory=list)
@@ -77,3 +84,5 @@ class ChatResponse(BaseModel):
     debug: ChatDebugInfo | None = None
     requires_clarification: bool = False
     clarification: ClarificationRequest | None = None
+    user_message_id: int | None = None
+    assistant_message_id: int | None = None

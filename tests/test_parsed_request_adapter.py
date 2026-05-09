@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from app.core.config import Settings
+from app.orchestrator.intent_router import IntentRouter
 from app.orchestrator.parsed_request_adapter import ParsedRequestAdapter
 from app.schemas.chat import IntentDecision
 from app.schemas.parser import ParsedQueryConstraints, ParsedUserRequest, RecipeReference
@@ -105,3 +106,25 @@ def test_adapter_recipe_reference_in_entities() -> None:
     )
     assert d.entities.get("recipe_reference") == {"type": "rank", "value": 2}
     assert d.entities.get("nutrient") == "protein"
+
+
+def test_adapter_event_recommendation_route() -> None:
+    from app.schemas.event import EventProfile
+
+    ad = _adapter()
+    rule = IntentRouter().decide("Меню на пикник на природе")
+    parsed = ParsedUserRequest(
+        intent="event_recommendation",
+        confidence=1.0,
+        event_profile=EventProfile(event_type="picnic"),
+        constraints=ParsedQueryConstraints(),
+    )
+    d, _, _ = ad.to_pipeline_inputs(
+        parsed=parsed,
+        rule_decision=rule,
+        rule_constraints=QueryConstraints(),
+        message="Меню на пикник на природе",
+    )
+    assert d.intent == "event_recommendation"
+    assert d.route == "event_menu_recommendation"
+    assert d.entities.get("event_profile", {}).get("event_type") == "picnic"

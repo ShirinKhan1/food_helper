@@ -4,10 +4,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.event import EventProfile
+
 
 ParserIntent = Literal[
     "search_recipes",
     "recommend_recipes",
+    "event_recommendation",
     "nutrition_question",
     "ingredient_substitution",
     "general_substitution",
@@ -56,5 +59,6 @@ class ParsedUserRequest(BaseModel):
     recipe_title_query: str | None = None
     target_ingredient: str | None = None
     nutrients: list[str] = Field(default_factory=list)
+    event_profile: EventProfile | None = None
     requires_clarification: bool = False
     clarification: ClarificationRequest | None = None

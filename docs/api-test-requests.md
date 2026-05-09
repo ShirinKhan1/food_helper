@@ -115,7 +115,39 @@ POST {{base_url}}/v1/chat
 
 Ожидаемо: обычный ответ поиска/рекомендаций, `requires_clarification: false`.
 
-По умолчанию в окружении parser выключен (`QUERY_PARSER_MODE=rules`, `LLM_QUERY_PARSER_ENABLED=false`), поэтому этот сценарий появится только после явной настройки переменных (см. README).
+По умолчанию в окружении parser выключен (`QUERY_PARSER_MODE=rules`, `LLM_QUERY_PARSER_ENABLED=false`), поэтому этот сценарий появится только после явной настройки переменных (см. [query-parser.md](query-parser.md)).
+
+## 2.2. Chat: событийное меню (event_recommendation)
+
+Проверяет подбор меню под типовое мероприятие. Нужны загруженные рецепты и эмбеддинги (см. корневой README). Убедись, что `EVENT_RECOMMENDATION_ENABLED` не выключен (по умолчанию включён).
+
+```http
+POST {{base_url}}/v1/chat
+```
+
+Body:
+
+```json
+{
+  "message": "Новогодний стол на 8 человек, без орехов",
+  "options": {
+    "top_k": 5,
+    "include_debug": true
+  }
+}
+```
+
+Ожидаемо:
+
+- HTTP `200`.
+- `intent` равен `event_recommendation`.
+- `route` равен `event_menu_recommendation`.
+- Объект `event_profile` заполнен (тип события, гости, ограничения — по возможности из текста).
+- Массив `event_menu` не пустой: группы с полями `role`, `title`, `recipes` (карточки блюд).
+- Поле `recipes` в корне ответа может быть пустым или дополнительным — основная структура меню в `event_menu`.
+- При `include_debug=true` в `debug` есть следы пайплайна (например `event_recommendation` внутри `debug` при наличии).
+
+Альтернативная формулировка для проверки: «Детский день рождения на 12 человек, закуски и торт».
 
 ## 3. Chat: продолжение диалога
 

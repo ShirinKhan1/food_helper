@@ -35,6 +35,7 @@ class InMemoryConversationStateService:
     def __init__(self) -> None:
         self.snapshots: dict[str, ConversationSnapshot] = {}
         self.messages: list[tuple[str, str, str]] = []
+        self._next_message_id = 1
 
     def prepare_conversation(self, conversation_id: str | None, user_id: UUID | None = None) -> str:
         cid = conversation_id or "conv-eval"
@@ -44,8 +45,24 @@ class InMemoryConversationStateService:
     def ensure_conversation(self, conversation_id: str | None) -> str:
         return self.prepare_conversation(conversation_id, None)
 
-    def append_message(self, conversation_id: str, *, role: str, content: str) -> None:
+    def append_message(
+        self,
+        conversation_id: str,
+        *,
+        role: str,
+        content: str,
+        state_after_turn: dict | None = None,
+    ) -> int:
         self.messages.append((conversation_id, role, content))
+        mid = self._next_message_id
+        self._next_message_id += 1
+        return mid
+
+    def export_state_json(self, conversation_id: str) -> dict:
+        return {}
+
+    def fork_at_user_message(self, conversation_id: str, user_message_id: int) -> None:
+        return None
 
     def get_snapshot(self, conversation_id: str) -> ConversationSnapshot:
         return self.snapshots.setdefault(
@@ -59,12 +76,15 @@ class InMemoryConversationStateService:
         *,
         last_recipe_results: list[int] | None = None,
         selected_recipe_id: object = "__unset__",
+        last_event_profile: object = "__unset__",
     ) -> None:
         snapshot = self.get_snapshot(conversation_id)
         if last_recipe_results is not None:
             snapshot.last_recipe_results = last_recipe_results
         if selected_recipe_id != "__unset__":
             snapshot.selected_recipe_id = selected_recipe_id  # type: ignore[assignment]
+        if last_event_profile != "__unset__":
+            snapshot.last_event_profile = last_event_profile  # type: ignore[assignment]
 
     def get_pending_clarification(self, conversation_id: str):
         return self.get_snapshot(conversation_id).pending_clarification
@@ -268,7 +288,7 @@ class InMemorySearchService:
     def __init__(self) -> None:
         self._catalog = IngredientCatalog.load()
 
-    def search(self, message: str, *, constraints, top_k: int):
+    def search(self, message: str, *, constraints, top_k: int, candidate_k: int | None = None, exclude_recipe_ids=None):
         lowered = message.lower()
         if "борщ" in lowered:
             rows = [DATASET[2], DATASET[1], DATASET[3]]
@@ -293,9 +313,13 @@ class InMemorySearchService:
         else:
             rows = []
             normalized_query = lowered
-        return SimpleExecution(normalized_query, rows[:top_k])
+        excl = frozenset(exclude_recipe_ids or ())
+        if excl:
+            rows = [r for r in rows if int(r["id"]) not in excl]
+        use_k = candidate_k if candidate_k is not None else top_k
+        return SimpleExecution(normalized_query, rows[:use_k])
 
-    def similar_recipes(self, *, normalized_query: str, base_rows: list[dict], constraints, top_k: int):
+    def similar_recipes(self, *, normalized_query: str, base_rows: list[dict], constraints, top_k: int, exclude_recipe_ids=None):
         rows = list(base_rows)
         exclusions = [*constraints.exclude_ingredients, *constraints.allergy_exclusions]
         if exclusions:
@@ -305,6 +329,9 @@ class InMemorySearchService:
                     continue
                 filtered_rows.append(row)
             rows = filtered_rows
+        excl = frozenset(exclude_recipe_ids or ())
+        if excl:
+            rows = [r for r in rows if int(r.get("id") or 0) not in excl]
         return SimpleExecution(normalized_query, rows[:top_k])
 
 
