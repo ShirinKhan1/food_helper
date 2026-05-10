@@ -13,3 +13,9 @@ recipes.jsonl
 parsed_urls.txt
 errors.jsonl
 .json
+
+# PEFT adapter and other local model weights (see docs/model-artifacts.md)
+models/
+
+# Decision planner: локальная разметка и сгенерированный JSONL (scripts/generate_decision_planner_dataset.py)
+data/food_helper_decision_planner*.jsonl

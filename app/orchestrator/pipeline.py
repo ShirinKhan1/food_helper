@@ -347,6 +347,8 @@ class ChatPipeline:
         }
         return {
             "mode": self._settings.query_parser_mode,
+            "provider": self._settings.llm_query_parser_provider,
+            "model": self._settings.llm_query_parser_model,
             "used_llm": parser_result.used_llm,
             "fallback_reason": parser_result.fallback_reason,
             "latency_ms": parser_result.latency_ms,
@@ -1263,6 +1265,8 @@ class ChatPipeline:
             "latency_ms": llm_result.latency_ms,
             "postcheck_passed": llm_result.postcheck_passed,
             "postcheck_errors": llm_result.postcheck_errors,
+            "provider": self._settings.llm_provider,
+            "model": self._settings.llm_model,
         }
 
     def _simplify_rows(self, rows: list[dict]) -> list[dict]:

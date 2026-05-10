@@ -8,12 +8,13 @@
 |--------|---------|-----------|------------|
 | `db` | *(нет)* | `food_helper_db` | Postgres 16 + pgvector, порт **5433→5432** |
 | `ollama` | *(нет)* | `food_helper_ollama` | Локальный LLM runtime, порт **11434→11434**, модели в томе `ollama_data` |
+| `model` | *(нет)* | `food_helper_model` | Опциональный PEFT-сервис Qwen3 + LoRA, порт **8010→8010**; см. [model-integration.md](model-integration.md) |
 | `loader` | `load` | `food_helper_loader` | Однократная загрузка `recipes.jsonl` в БД |
 | `embed` | `embed` | **`food_helper`** | Образ с Python, зависимостями из `requirements-embed.txt`; по умолчанию **`sleep infinity`** (удобно для `exec`, тестов и поиска) |
 | `api` | *(нет)* | `food_helper_api` | FastAPI на порту **8000→8000**; LLM-запросы идут в `http://ollama:11434` |
 | `web` | *(нет)* | `food_helper_web` | Next.js UI на **3000→3000**; прокси `/v1/*` и `/health` → `api` (в браузере достаточно **http://localhost:3000**) |
 
-Тома: `pgdata` (данные Postgres), `ollama_data` (скачанные модели Ollama). Модель эмбеддингов сохраняется внутрь Docker-образов при сборке и используется из `/opt/models/intfloat-multilingual-e5-small`.
+Тома: `pgdata` (данные Postgres), `ollama_data` (скачанные модели Ollama), `hf_cache` (кэш Hugging Face для сервиса `model`). Модель эмбеддингов сохраняется внутрь Docker-образов при сборке и используется из `/opt/models/intfloat-multilingual-e5-small`.
 
 ## Локальная LLM в Docker (Ollama в контейнере)
 

@@ -11,7 +11,8 @@
 
 Подробности по Compose-профилям и контейнерам: [docs/docker-compose.md](docs/docker-compose.md).  
 Архитектура backend и пайплайн чата: [docs/architecture.md](docs/architecture.md).  
-Оглавление всей документации в каталоге `docs/`: [docs/README.md](docs/README.md).
+Оглавление всей документации в каталоге `docs/`: [docs/README.md](docs/README.md).  
+Опциональный PEFT LoRA для парсера запросов: [docs/model-integration.md](docs/model-integration.md).
 
 ## Быстрый старт (Docker)
 

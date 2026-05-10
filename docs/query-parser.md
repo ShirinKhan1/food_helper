@@ -12,7 +12,7 @@
 | `llm` | Всегда пытаться вызвать LLM для парсинга (с откатом на rules при ошибке). |
 | `auto` | LLM для «сложных» запросов по эвристикам внутри парсера; иначе rules. |
 
-Чтобы LLM реально вызывался, нужно **`LLM_QUERY_PARSER_ENABLED=true`** и доступный провайдер (например Ollama в Docker, см. [local-llm.md](local-llm.md)).
+Чтобы LLM реально вызывался, нужно **`LLM_QUERY_PARSER_ENABLED=true`** и доступный провайдер: `ollama` (см. [local-llm.md](local-llm.md)) или **`peft_http`** (отдельный сервис `model`, см. [model-integration.md](model-integration.md)).
 
 ## Основные переменные окружения
 
@@ -20,7 +20,8 @@
 |------------|------------|
 | `QUERY_PARSER_MODE` | `rules` / `llm` / `auto` |
 | `LLM_QUERY_PARSER_ENABLED` | Включить LLM-слой парсера |
-| `LLM_QUERY_PARSER_PROVIDER` | Например `ollama` |
+| `LLM_QUERY_PARSER_PROVIDER` | `ollama` или `peft_http` |
+| `LLM_QUERY_PARSER_BASE_URL` | URL провайдера парсера; если пусто — используется `LLM_BASE_URL` |
 | `LLM_QUERY_PARSER_MODEL` | Имя модели |
 | `LLM_QUERY_PARSER_TIMEOUT_SECONDS` | Таймаут HTTP к LLM |
 | `LLM_QUERY_PARSER_CONFIDENCE_THRESHOLD` | Порог уверенности; ниже — усиление fallback |

@@ -21,10 +21,37 @@ from app.services.nutrition import NutritionService
 from app.services.recipe_repository import RecipeRepository
 from app.services.llm.null import NullLLMClient
 from app.services.llm.ollama import OllamaLLMClient
+from app.services.llm.peft_http import PeftHttpLLMClient
+from app.services.llm.base import LLMClient
 from app.services.search_service import SearchService
 from app.services.substitution import SubstitutionService
 from app.services.user_repository import UserRepository
 from app.services.vector_search import VectorSearchService
+
+
+def build_llm_client(
+    *,
+    provider: str,
+    base_url: str,
+    model: str,
+    timeout_seconds: float,
+) -> LLMClient | None:
+    p = provider.strip().lower()
+    if p in {"", "none"}:
+        return None
+    if p == "ollama":
+        return OllamaLLMClient(
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
+    if p == "peft_http":
+        return PeftHttpLLMClient(
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
+    return None
 
 
 @dataclass
@@ -78,14 +105,14 @@ def build_services(settings: Settings | None = None) -> AppServices:
         max_question_chars=resolved_settings.clarification_max_question_chars,
         event_max_guests=resolved_settings.event_max_guests,
     )
-    if resolved_settings.llm_query_parser_enabled and resolved_settings.llm_query_parser_provider == "ollama":
-        parser_llm_client = OllamaLLMClient(
-            base_url=resolved_settings.llm_base_url,
+    parser_llm_client: LLMClient | None = None
+    if resolved_settings.llm_query_parser_enabled:
+        parser_llm_client = build_llm_client(
+            provider=resolved_settings.llm_query_parser_provider,
+            base_url=resolved_settings.llm_query_parser_resolved_base_url,
             model=resolved_settings.llm_query_parser_model,
             timeout_seconds=resolved_settings.llm_query_parser_timeout_seconds,
         )
-    else:
-        parser_llm_client = None
     query_parser = LLMQueryParser(
         settings=resolved_settings,
         llm_client=parser_llm_client,
@@ -93,12 +120,14 @@ def build_services(settings: Settings | None = None) -> AppServices:
     )
     parsed_request_adapter = ParsedRequestAdapter(settings=resolved_settings)
     clarification_manager = ClarificationManager()
-    if resolved_settings.llm_enabled and resolved_settings.llm_provider == "ollama":
-        llm_client = OllamaLLMClient(
-            base_url=resolved_settings.llm_base_url,
+    if resolved_settings.llm_enabled:
+        answer_llm = build_llm_client(
+            provider=resolved_settings.llm_provider,
+            base_url=resolved_settings.llm_base_url.rstrip("/"),
             model=resolved_settings.llm_model,
             timeout_seconds=resolved_settings.llm_timeout_seconds,
         )
+        llm_client: LLMClient = answer_llm if answer_llm is not None else NullLLMClient()
     else:
         llm_client = NullLLMClient()
 

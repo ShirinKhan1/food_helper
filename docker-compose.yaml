@@ -27,6 +27,37 @@ services:
       - ollama_data:/root/.ollama
     restart: unless-stopped
 
+  model:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.model
+    container_name: food_helper_model
+    environment:
+      MODEL_BASE_NAME: Qwen/Qwen3-0.6B
+      MODEL_ADAPTER_PATH: /opt/models/food_helper_lora_adapter
+      MODEL_NAME: food-helper-qwen3-0.6b-lora
+      MODEL_DEVICE: auto
+      MODEL_DTYPE: auto
+      MODEL_MAX_INPUT_TOKENS: "4096"
+      MODEL_ENABLE_THINKING_DEFAULT: "false"
+      HF_HOME: /opt/hf_cache
+    volumes:
+      - ./models/food_helper_lora_adapter:/opt/models/food_helper_lora_adapter:ro
+      - hf_cache:/opt/hf_cache
+    ports:
+      - "8010:8010"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=5).read()\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+
   loader:
     profiles: ["load"]
     build:
@@ -133,3 +164,4 @@ services:
 volumes:
   pgdata:
   ollama_data:
+  hf_cache:

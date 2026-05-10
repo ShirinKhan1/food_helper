@@ -41,6 +41,7 @@ class Settings:
     query_parser_mode: str
     llm_query_parser_enabled: bool
     llm_query_parser_provider: str
+    llm_query_parser_base_url: str | None
     llm_query_parser_model: str
     llm_query_parser_temperature: float
     llm_query_parser_max_tokens: int
@@ -63,6 +64,12 @@ class Settings:
     event_min_candidates: int
     event_max_guests: int
 
+    @property
+    def llm_query_parser_resolved_base_url(self) -> str:
+        if self.llm_query_parser_base_url:
+            return self.llm_query_parser_base_url.rstrip("/")
+        return self.llm_base_url.rstrip("/")
+
     @classmethod
     def from_env(cls) -> "Settings":
         explicit_dsn = os.getenv("APP_PG_DSN")
@@ -73,6 +80,14 @@ class Settings:
         query_parser_mode = os.getenv("QUERY_PARSER_MODE", "rules")
         if query_parser_mode not in {"rules", "llm", "auto"}:
             raise ValueError("QUERY_PARSER_MODE must be one of: rules, llm, auto")
+        llm_provider = os.getenv("LLM_PROVIDER", "none").strip().lower()
+        if llm_provider not in {"none", "ollama", "peft_http"}:
+            raise ValueError("LLM_PROVIDER must be one of: none, ollama, peft_http")
+        llm_query_parser_provider = os.getenv("LLM_QUERY_PARSER_PROVIDER", "ollama").strip().lower()
+        if llm_query_parser_provider not in {"ollama", "peft_http"}:
+            raise ValueError("LLM_QUERY_PARSER_PROVIDER must be one of: ollama, peft_http")
+        _parser_base = (os.getenv("LLM_QUERY_PARSER_BASE_URL") or "").strip()
+        llm_query_parser_base_url = _parser_base if _parser_base else None
         return cls(
             app_name=os.getenv("APP_NAME", "Food Helper API"),
             db_dsn=db_dsn,
@@ -87,7 +102,7 @@ class Settings:
             eager_load_embedding_model=os.getenv("EAGER_LOAD_EMBEDDING_MODEL", "false").lower()
             == "true",
             llm_enabled=os.getenv("LLM_ENABLED", "false").lower() == "true",
-            llm_provider=os.getenv("LLM_PROVIDER", "none"),
+            llm_provider=llm_provider,
             llm_model=os.getenv("LLM_MODEL", "qwen3:4b"),
             llm_base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434"),
             llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
@@ -112,7 +127,8 @@ class Settings:
             llm_strip_think_tags=os.getenv("LLM_STRIP_THINK_TAGS", "true").lower() == "true",
             query_parser_mode=query_parser_mode,
             llm_query_parser_enabled=os.getenv("LLM_QUERY_PARSER_ENABLED", "false").lower() == "true",
-            llm_query_parser_provider=os.getenv("LLM_QUERY_PARSER_PROVIDER", "ollama"),
+            llm_query_parser_provider=llm_query_parser_provider,
+            llm_query_parser_base_url=llm_query_parser_base_url,
             llm_query_parser_model=os.getenv("LLM_QUERY_PARSER_MODEL", "qwen3:4b"),
             llm_query_parser_temperature=float(os.getenv("LLM_QUERY_PARSER_TEMPERATURE", "0")),
             llm_query_parser_max_tokens=int(os.getenv("LLM_QUERY_PARSER_MAX_TOKENS", "700")),
