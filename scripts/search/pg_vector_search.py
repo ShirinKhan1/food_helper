@@ -26,6 +26,10 @@ def vector_search_topk(
     if k < 1:
         return []
 
+    # psycopg2 cannot adapt numpy scalar types (e.g. numpy.float32).
+    # Ensure plain Python floats for the pgvector adapter.
+    q = [float(x) for x in query_embedding]
+
     cur.execute(
         """
         SELECT e.recipe_id, e.embedding <=> %s::vector AS dist
@@ -35,7 +39,7 @@ def vector_search_topk(
         ORDER BY e.embedding <=> %s::vector
         LIMIT %s
         """,
-        (list(query_embedding), model_name, list(query_embedding), k),
+        (q, model_name, q, k),
     )
     rows = cur.fetchall()
     out: List[Tuple[int, float]] = []
